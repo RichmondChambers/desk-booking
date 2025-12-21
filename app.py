@@ -2,7 +2,6 @@ import streamlit as st
 st.write("DEBUG session_state:", dict(st.session_state))
 from datetime import datetime, date
 from utils.db import init_db, get_conn
-from utils.google_auth import google_login_link, handle_oauth_response
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
 
