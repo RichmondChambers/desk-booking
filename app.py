@@ -1,3 +1,4 @@
+st.write("DEBUG USER:", user)
 import streamlit as st
 from datetime import datetime, date
 
