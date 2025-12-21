@@ -9,7 +9,7 @@ from authlib.integrations.requests_client import OAuth2Session
 
 
 # ---------------------------------------------------
-# STREAMLIT PAGE CONFIG
+# PAGE CONFIG
 # ---------------------------------------------------
 st.set_page_config(
     page_title="Desk Booking",
@@ -18,12 +18,12 @@ st.set_page_config(
 
 
 # ---------------------------------------------------
-# GOOGLE OAUTH SETTINGS (from Streamlit Secrets)
+# LOAD OAUTH SETTINGS
 # ---------------------------------------------------
 CLIENT_ID = st.secrets["oauth"]["client_id"]
 CLIENT_SECRET = st.secrets["oauth"]["client_secret"]
 REDIRECT_URI = st.secrets["oauth"]["redirect_uri"]
-ALLOWED_DOMAIN = st.secrets["oauth"]["allowed_domain"]
+ALLOWED_DOMAIN = st.secrets["oauth"]["allowed_domain"].lower()
 APP_URL = st.secrets["oauth"]["app_url"]
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -32,13 +32,13 @@ USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 
 # ---------------------------------------------------
-# LOGIN PAGE
+# LOGIN SCREEN
 # ---------------------------------------------------
 def show_login_screen():
     oauth = OAuth2Session(
         CLIENT_ID,
         redirect_uri=REDIRECT_URI,
-        scope="openid email profile"
+        scope="openid email profile",
     )
 
     auth_url, _ = oauth.create_authorization_url(
@@ -54,18 +54,20 @@ def show_login_screen():
 
 
 # ---------------------------------------------------
-# HANDLE OAUTH CALLBACK
+# HANDLE GOOGLE CALLBACK (?code=…)
 # ---------------------------------------------------
 if "token" not in st.session_state:
 
-    # When redirected back from Google with ?code=
-    if "code" in st.query_params:
-        code = st.query_params["code"]
+    qp = st.query_params
+
+    # Callback stage — user returned from Google with ?code=
+    if "code" in qp:
+        code = qp["code"]
 
         oauth = OAuth2Session(
             CLIENT_ID,
             CLIENT_SECRET,
-            redirect_uri=REDIRECT_URI
+            redirect_uri=REDIRECT_URI,
         )
 
         token = oauth.fetch_token(
@@ -74,26 +76,25 @@ if "token" not in st.session_state:
             grant_type="authorization_code",
         )
 
-        # Save token
+        # Save session token
         st.session_state["token"] = token
 
-        # Clean URL (removes /oauth2callback and query params)
+        # Clear the URL query params
         st.query_params.clear()
-        st.experimental_set_query_params()
 
-        # Force redirect to app root to avoid "Page Not Found"
+        # Force redirect to home WITHOUT params
         st.markdown(
             f'<meta http-equiv="refresh" content="0;url={APP_URL}" />',
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
         st.stop()
 
-    # If no token and no callback → show login
+    # Not logged in → show login button
     show_login_screen()
 
 
 # ---------------------------------------------------
-# FETCH USER INFO
+# FETCH USER INFO (NOW AUTHENTICATED)
 # ---------------------------------------------------
 oauth = OAuth2Session(
     CLIENT_ID,
@@ -103,17 +104,20 @@ oauth = OAuth2Session(
 
 userinfo = oauth.get(USERINFO_URL).json()
 
-email = userinfo.get("email")
+email = (userinfo.get("email") or "").lower()
 name = userinfo.get("name") or email.split("@")[0]
 
-# Restrict login to company domain
-if not email.endswith(ALLOWED_DOMAIN):
-    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} account.")
+
+# ---------------------------------------------------
+# RESTRICT LOGIN TO CORPORATE DOMAIN
+# ---------------------------------------------------
+if not email.endswith("@" + ALLOWED_DOMAIN):
+    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} Google Workspace account.")
     st.stop()
 
 
 # ---------------------------------------------------
-# DATABASE USER HANDLING
+# DATABASE USER CREATION / LOADING
 # ---------------------------------------------------
 init_db()
 conn = get_conn()
@@ -125,11 +129,12 @@ row = c.execute(
 ).fetchone()
 
 if not row:
-    c.execute(
-        "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
-        (name, email),
-    )
+    c.execute("""
+        INSERT INTO users (name, email, role, can_book)
+        VALUES (?, ?, 'user', 1)
+    """, (name, email))
     conn.commit()
+
     row = c.execute(
         "SELECT id, name, role, can_book FROM users WHERE email=?",
         (email,),
@@ -149,20 +154,20 @@ st.session_state.user_email = email
 
 
 # ---------------------------------------------------
-# SIDEBAR USER INFO
+# SIDEBAR INFO
 # ---------------------------------------------------
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
 
 # ---------------------------------------------------
-# ENFORCE NO-SHOWS
+# NO-SHOW ENFORCEMENT
 # ---------------------------------------------------
 enforce_no_shows(datetime.now())
 
 
 # ---------------------------------------------------
-# QR CODE CHECK-IN HANDLER
+# QR CHECK-IN HANDLER
 # ---------------------------------------------------
 qp = st.query_params
 
@@ -175,14 +180,11 @@ if "checkin" in qp:
         conn = get_conn()
         c = conn.cursor()
 
-        booking = c.execute(
-            """
+        booking = c.execute("""
             SELECT id, start_time, end_time, checked_in
             FROM bookings
             WHERE user_id=? AND desk_id=? AND date=? AND status='booked'
-            """,
-            (st.session_state.user_id, desk_id, today),
-        ).fetchone()
+        """, (st.session_state.user_id, desk_id, today)).fetchone()
 
         if not booking:
             st.warning("No active booking found for this desk today.")
@@ -200,15 +202,13 @@ if "checkin" in qp:
                 audit_log(
                     st.session_state.user_email,
                     "QR_CHECK_IN",
-                    f"booking={booking_id}, desk={desk_id}",
+                    f"booking={booking_id}, desk={desk_id}"
                 )
 
                 st.success("Checked in successfully!")
 
             else:
-                st.warning(
-                    f"Booking not active. Valid window: {start_time}–{end_time}"
-                )
+                st.warning(f"Booking not active. Valid window: {start_id}-{end_time}")
 
         conn.close()
 
