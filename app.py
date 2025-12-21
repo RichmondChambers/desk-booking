@@ -1,4 +1,3 @@
-st.write("DEBUG QUERY PARAMS:", st.query_params)
 import streamlit as st
 from datetime import datetime, date
 
@@ -9,6 +8,8 @@ from utils.audit import audit_log
 # Correct Authlib import for Google OAuth (works on Streamlit Cloud)
 from authlib.integrations.requests_client import OAuth2Session
 
+# ---- DEBUG: Show Google callback query params ----
+st.write("DEBUG QUERY PARAMS:", st.query_params)
 
 # ---------------------------------------------------
 # PAGE CONFIG
