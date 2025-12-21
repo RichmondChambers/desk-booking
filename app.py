@@ -5,7 +5,8 @@ from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
 
-from authlib.integrations.requests_client import OAuth2Session
+# IMPORTANT: Correct Authlib class for Google OAuth
+from authlib.integrations.base_client import OAuth2Session
 
 
 # ---------------------------------------------------
@@ -18,10 +19,9 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 # LOAD OAUTH SECRETS
 # ---------------------------------------------------
 OAUTH = st.secrets["oauth"]
-
 CLIENT_ID = OAUTH["client_id"]
 CLIENT_SECRET = OAUTH["client_secret"]
-REDIRECT_URI = st.secrets["oauth"]["redirect_uri"]
+REDIRECT_URI = OAUTH["redirect_uri"]              # MUST match Google Console
 ALLOWED_DOMAIN = OAUTH["allowed_domain"].lower()
 APP_URL = OAUTH["app_url"]
 
@@ -59,39 +59,44 @@ if "token" not in st.session_state:
 
     qp = st.query_params
 
-    # Returned from Google
     if "code" in qp:
+
         code = qp["code"]
 
+        # Construct OAuth session for token exchange
         oauth = OAuth2Session(
             client_id=CLIENT_ID,
             redirect_uri=REDIRECT_URI,
         )
 
+        # Google requires authorization_response for correct parsing
+        current_url = st.request.url
+
         token = oauth.fetch_token(
             TOKEN_URL,
-            code=code,
-            client_secret=CLIENT_SECRET,   # <- THIS is the correct place for secret
+            client_secret=CLIENT_SECRET,
+            authorization_response=current_url,
+            token_endpoint_auth_method="client_secret_post",
         )
 
         st.session_state["token"] = token
 
-        # Remove ?code from URL
+        # Clean callback URL
         st.query_params.clear()
 
-        # Redirect to home page cleanly
+        # Refresh browser WITHOUT query params
         st.markdown(
             f'<meta http-equiv="refresh" content="0;url={APP_URL}" />',
             unsafe_allow_html=True
         )
         st.stop()
 
-    # Not returning from Google → show login button
+    # No callback yet → show login button
     show_login()
 
 
 # ---------------------------------------------------
-# FETCH USER INFO (NOW AUTHENTICATED)
+# FETCH USER INFO (AUTHENTICATED)
 # ---------------------------------------------------
 oauth = OAuth2Session(
     client_id=CLIENT_ID,
@@ -132,8 +137,7 @@ if not row:
     conn.commit()
 
     row = c.execute("""
-        SELECT id, name, role, can_book
-        FROM users WHERE email=?
+        SELECT id, name, role, can_book FROM users WHERE email=?
     """, (email,)).fetchone()
 
 conn.close()
