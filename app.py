@@ -4,6 +4,7 @@ from datetime import datetime, date
 from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
+from utils.google_auth import google_login_link, handle_oauth_response
 
 st.set_page_config(
     page_title="Desk Booking",
@@ -27,22 +28,24 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---- Streamlit Cloud built-in authentication ----
-# NOTE: Built-in auth only works on Streamlit Cloud (not locally).
-user = st.experimental_user
+# ---- HANDLE GOOGLE OAUTH CALLBACK ----
+handle_oauth_response()
 
-if not user or not user.is_authenticated:
+# If user not logged in, show login screen
+if "user_email" not in st.session_state:
     st.title("Desk Booking")
     st.write("Please sign in with your Google Workspace account.")
+    google_login_link()
     st.stop()
+
+# ---- USER IS AUTHENTICATED ----
+email = st.session_state.user_email
+name = st.session_state.user_name or email.split("@")[0]
 
 # Initialise database
 init_db()
 
-# Ensure the logged-in user exists in our DB and store their details in session_state
-email = user.email
-name = user.name or email.split("@")[0]
-
+# Ensure user exists in DB
 conn = get_conn()
 cur = conn.cursor()
 
@@ -64,6 +67,7 @@ if not row:
 
 conn.close()
 
+# Store user details in session_state
 st.session_state.update(
     {
         "user_id": row[0],
@@ -81,7 +85,7 @@ st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 # Enforce no-shows on each load
 enforce_no_shows(datetime.now())
 
-# QR code check-in handler
+# ---- QR CHECK-IN HANDLING ----
 qp = st.query_params
 if "checkin" in qp:
     try:
@@ -117,7 +121,9 @@ if "checkin" in qp:
                 )
                 st.success("Checked in successfully.")
             else:
-                st.warning(f"Booking not active. Booking window: {start_time}–{end_time}")
+                st.warning(
+                    f"Booking not active. Booking window: {start_time}–{end_time}"
+                )
 
         conn.close()
     finally:
