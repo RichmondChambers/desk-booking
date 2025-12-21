@@ -5,8 +5,8 @@ from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
 
-# IMPORTANT: Correct Authlib class for Google OAuth
-from authlib.integrations.base_client import OAuth2Session
+# Correct Authlib import for Google OAuth (works on Streamlit Cloud)
+from authlib.integrations.requests_client import OAuth2Session
 
 
 # ---------------------------------------------------
@@ -16,12 +16,13 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 
 
 # ---------------------------------------------------
-# LOAD OAUTH SECRETS
+# LOAD OAUTH SETTINGS
 # ---------------------------------------------------
 OAUTH = st.secrets["oauth"]
+
 CLIENT_ID = OAUTH["client_id"]
 CLIENT_SECRET = OAUTH["client_secret"]
-REDIRECT_URI = OAUTH["redirect_uri"]              # MUST match Google Console
+REDIRECT_URI = OAUTH["redirect_uri"]        # https://richmond-chambers...app/
 ALLOWED_DOMAIN = OAUTH["allowed_domain"].lower()
 APP_URL = OAUTH["app_url"]
 
@@ -43,7 +44,7 @@ def show_login():
     auth_url, _ = oauth.create_authorization_url(
         AUTH_URL,
         access_type="offline",
-        prompt="consent",
+        prompt="consent"
     )
 
     st.title("Richmond Chambers – Internal Tool")
@@ -60,49 +61,44 @@ if "token" not in st.session_state:
     qp = st.query_params
 
     if "code" in qp:
-
         code = qp["code"]
 
-        # Construct OAuth session for token exchange
         oauth = OAuth2Session(
             client_id=CLIENT_ID,
             redirect_uri=REDIRECT_URI,
         )
 
-        # Google requires authorization_response for correct parsing
-        current_url = st.request.url
+        # Build the full callback URL
+        full_callback_url = REDIRECT_URI + "?code=" + code
 
+        # Exchange code for token
         token = oauth.fetch_token(
             TOKEN_URL,
+            code=code,
             client_secret=CLIENT_SECRET,
-            authorization_response=current_url,
-            token_endpoint_auth_method="client_secret_post",
+            authorization_response=full_callback_url
         )
 
         st.session_state["token"] = token
 
-        # Clean callback URL
+        # Clear URL parameters
         st.query_params.clear()
 
-        # Refresh browser WITHOUT query params
+        # Redirect to root
         st.markdown(
             f'<meta http-equiv="refresh" content="0;url={APP_URL}" />',
             unsafe_allow_html=True
         )
         st.stop()
 
-    # No callback yet → show login button
+    # Not returning from Google → show Google login
     show_login()
 
 
 # ---------------------------------------------------
-# FETCH USER INFO (AUTHENTICATED)
+# FETCH USER INFO
 # ---------------------------------------------------
-oauth = OAuth2Session(
-    client_id=CLIENT_ID,
-    token=st.session_state["token"]
-)
-
+oauth = OAuth2Session(client_id=CLIENT_ID, token=st.session_state["token"])
 userinfo = oauth.get(USERINFO_URL).json()
 
 email = userinfo.get("email", "").lower()
@@ -110,10 +106,10 @@ name = userinfo.get("name") or email.split("@")[0]
 
 
 # ---------------------------------------------------
-# DOMAIN RESTRICTION
+# DOMAIN CHECK
 # ---------------------------------------------------
 if not email.endswith("@" + ALLOWED_DOMAIN):
-    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} account.")
+    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} Google Workspace account.")
     st.stop()
 
 
@@ -137,14 +133,15 @@ if not row:
     conn.commit()
 
     row = c.execute("""
-        SELECT id, name, role, can_book FROM users WHERE email=?
+        SELECT id, name, role, can_book
+        FROM users WHERE email=?
     """, (email,)).fetchone()
 
 conn.close()
 
 
 # ---------------------------------------------------
-# SAVE USER IN SESSION
+# SESSION DETAILS
 # ---------------------------------------------------
 st.session_state.user_id = row[0]
 st.session_state.user_name = row[1]
@@ -161,7 +158,7 @@ st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
 
 # ---------------------------------------------------
-# ENFORCE NO-SHOWS
+# NO-SHOW CHECKS
 # ---------------------------------------------------
 enforce_no_shows(datetime.now())
 
