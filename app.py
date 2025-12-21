@@ -13,25 +13,13 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 
 
 # ---------------------------------------------------
-# STREAMLIT CLOUD AUTHENTICATION
+# USER IDENTITY (AUTH REMOVED)
 # ---------------------------------------------------
-user = st.experimental_user
+# Replace Google / Streamlit Cloud authentication with
+# a simple internal placeholder user
 
-# DEBUG: Show what Streamlit thinks the user is (remove later)
-# st.write("DEBUG USER:", user)
-
-if not user or not user.is_authenticated:
-    st.title("Desk Booking")
-    st.write("Please sign in using your Richmond Chambers Google account.")
-    st.stop()
-
-email = user.email.lower()
-name = user.name or email.split("@")[0]
-
-# Domain restriction
-if not email.endswith("@richmondchambers.com"):
-    st.error("Access denied — please use your @richmondchambers.com Google account.")
-    st.stop()
+email = "internal.user@richmondchambers.com"
+name = "Internal User"
 
 
 # ---------------------------------------------------
@@ -112,10 +100,17 @@ if "checkin" in params:
             if checked_in:
                 st.info("Already checked in.")
             elif start_t <= now_time <= end_t:
-                c.execute("UPDATE bookings SET checked_in=1 WHERE id=?", (booking_id,))
+                c.execute(
+                    "UPDATE bookings SET checked_in=1 WHERE id=?",
+                    (booking_id,),
+                )
                 conn.commit()
 
-                audit_log(email, "QR_CHECK_IN", f"booking={booking_id}, desk={desk_id}")
+                audit_log(
+                    email,
+                    "QR_CHECK_IN",
+                    f"booking={booking_id}, desk={desk_id}",
+                )
                 st.success("Checked in successfully.")
             else:
                 st.warning(f"Booking only valid between {start_t}–{end_t}.")
