@@ -8,7 +8,7 @@ from utils.audit import audit_log
 st.set_page_config(
     page_title="Desk Booking",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
 # Mobile-friendly CSS
@@ -24,10 +24,11 @@ st.markdown(
     }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-# --- Built-in Streamlit authentication ---
+# ---- Streamlit Cloud built-in authentication ----
+# NOTE: Built-in auth only works on Streamlit Cloud (not locally).
 user = st.experimental_user
 
 if not user or not user.is_authenticated:
@@ -35,23 +36,47 @@ if not user or not user.is_authenticated:
     st.write("Please sign in with your Google Workspace account.")
     st.stop()
 
-# Map Streamlit user to session_state
-st.session_state.user_email = user.email
-st.session_state.user_name = user.name or user.email
-st.session_state.user_id = user.email  # stable identifier
-
-# Simple role logic (can be expanded later)
-if user.email.endswith("@richmondchambers.com"):
-    st.session_state.role = "staff"
-else:
-    st.session_state.role = "guest"
-
-# Sidebar
-st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
-st.sidebar.markdown(f"**Role:** {st.session_state.role}")
-
 # Initialise database
 init_db()
+
+# Ensure the logged-in user exists in our DB and store their details in session_state
+email = user.email
+name = user.name or email.split("@")[0]
+
+conn = get_conn()
+cur = conn.cursor()
+
+row = cur.execute(
+    "SELECT id, name, role, can_book FROM users WHERE email=?",
+    (email,),
+).fetchone()
+
+if not row:
+    cur.execute(
+        "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
+        (name, email),
+    )
+    conn.commit()
+    row = cur.execute(
+        "SELECT id, name, role, can_book FROM users WHERE email=?",
+        (email,),
+    ).fetchone()
+
+conn.close()
+
+st.session_state.update(
+    {
+        "user_id": row[0],
+        "user_name": row[1],
+        "role": row[2],
+        "can_book": row[3],
+        "user_email": email,
+    }
+)
+
+# Sidebar identity
+st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
+st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
 # Enforce no-shows on each load
 enforce_no_shows(datetime.now())
@@ -73,7 +98,7 @@ if "checkin" in qp:
             FROM bookings
             WHERE user_id=? AND desk_id=? AND date=? AND status='booked'
             """,
-            (st.session_state.user_id, desk_id, today)
+            (st.session_state.user_id, desk_id, today),
         ).fetchone()
 
         if not booking:
@@ -83,23 +108,18 @@ if "checkin" in qp:
             if checked_in:
                 st.info("You are already checked in.")
             elif start_time <= now_hhmm <= end_time:
-                c.execute(
-                    "UPDATE bookings SET checked_in=1 WHERE id=?",
-                    (booking_id,)
-                )
+                c.execute("UPDATE bookings SET checked_in=1 WHERE id=?", (booking_id,))
                 conn.commit()
                 audit_log(
                     st.session_state.user_email,
                     "CHECK_IN_QR",
-                    f"booking_id={booking_id}, desk_id={desk_id}"
+                    f"booking_id={booking_id}, desk_id={desk_id}",
                 )
                 st.success("Checked in successfully.")
             else:
-                st.warning(
-                    f"Booking not active. Booking window: {start_time}–{end_time}"
-                )
+                st.warning(f"Booking not active. Booking window: {start_time}–{end_time}")
+
         conn.close()
     finally:
         st.query_params.clear()
-ate.user_name}")
-st.sidebar.markdown(f"**Role:** {st.session_state.role}")
+        st.rerun()
