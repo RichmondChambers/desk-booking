@@ -20,9 +20,10 @@ st.set_page_config(
 # ---------------------------------------------------
 # GOOGLE OAUTH SETTINGS
 # ---------------------------------------------------
+
 CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
 CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
-REDIRECT_URI = "https://richmond-chambers-desk-booking.streamlit.app/oauth2callback"
+REDIRECT_URI = st.secrets["REDIRECT_URI"]
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
