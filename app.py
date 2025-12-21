@@ -11,20 +11,19 @@ from authlib.integrations.requests_client import OAuth2Session
 # ---------------------------------------------------
 # PAGE CONFIG
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Desk Booking",
-    layout="wide",
-)
+st.set_page_config(page_title="Desk Booking", layout="wide")
 
 
 # ---------------------------------------------------
-# LOAD OAUTH SETTINGS
+# LOAD OAUTH SECRETS
 # ---------------------------------------------------
-CLIENT_ID = st.secrets["oauth"]["client_id"]
-CLIENT_SECRET = st.secrets["oauth"]["client_secret"]
-REDIRECT_URI = st.secrets["oauth"]["redirect_uri"]
-ALLOWED_DOMAIN = st.secrets["oauth"]["allowed_domain"].lower()
-APP_URL = st.secrets["oauth"]["app_url"]
+OAUTH = st.secrets["oauth"]
+
+CLIENT_ID = OAUTH["client_id"]
+CLIENT_SECRET = OAUTH["client_secret"]
+REDIRECT_URI = OAUTH["redirect_uri"]
+ALLOWED_DOMAIN = OAUTH["allowed_domain"].lower()
+APP_URL = OAUTH["app_url"]
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -32,11 +31,11 @@ USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 
 # ---------------------------------------------------
-# LOGIN SCREEN
+# LOGIN BUTTON
 # ---------------------------------------------------
-def show_login_screen():
+def show_login():
     oauth = OAuth2Session(
-        CLIENT_ID,
+        client_id=CLIENT_ID,
         redirect_uri=REDIRECT_URI,
         scope="openid email profile",
     )
@@ -60,64 +59,61 @@ if "token" not in st.session_state:
 
     qp = st.query_params
 
-    # Callback stage — user returned from Google with ?code=
+    # Returned from Google
     if "code" in qp:
         code = qp["code"]
 
         oauth = OAuth2Session(
-            CLIENT_ID,
-            CLIENT_SECRET,
+            client_id=CLIENT_ID,
             redirect_uri=REDIRECT_URI,
         )
 
         token = oauth.fetch_token(
             TOKEN_URL,
             code=code,
-            grant_type="authorization_code",
+            client_secret=CLIENT_SECRET,   # <- THIS is the correct place for secret
         )
 
-        # Save session token
         st.session_state["token"] = token
 
-        # Clear the URL query params
+        # Remove ?code from URL
         st.query_params.clear()
 
-        # Force redirect to home WITHOUT params
+        # Redirect to home page cleanly
         st.markdown(
             f'<meta http-equiv="refresh" content="0;url={APP_URL}" />',
             unsafe_allow_html=True
         )
         st.stop()
 
-    # Not logged in → show login button
-    show_login_screen()
+    # Not returning from Google → show login button
+    show_login()
 
 
 # ---------------------------------------------------
 # FETCH USER INFO (NOW AUTHENTICATED)
 # ---------------------------------------------------
 oauth = OAuth2Session(
-    CLIENT_ID,
-    CLIENT_SECRET,
+    client_id=CLIENT_ID,
     token=st.session_state["token"]
 )
 
 userinfo = oauth.get(USERINFO_URL).json()
 
-email = (userinfo.get("email") or "").lower()
+email = userinfo.get("email", "").lower()
 name = userinfo.get("name") or email.split("@")[0]
 
 
 # ---------------------------------------------------
-# RESTRICT LOGIN TO CORPORATE DOMAIN
+# DOMAIN RESTRICTION
 # ---------------------------------------------------
 if not email.endswith("@" + ALLOWED_DOMAIN):
-    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} Google Workspace account.")
+    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} account.")
     st.stop()
 
 
 # ---------------------------------------------------
-# DATABASE USER CREATION / LOADING
+# DATABASE USER HANDLING
 # ---------------------------------------------------
 init_db()
 conn = get_conn()
@@ -135,10 +131,10 @@ if not row:
     """, (name, email))
     conn.commit()
 
-    row = c.execute(
-        "SELECT id, name, role, can_book FROM users WHERE email=?",
-        (email,),
-    ).fetchone()
+    row = c.execute("""
+        SELECT id, name, role, can_book
+        FROM users WHERE email=?
+    """, (email,)).fetchone()
 
 conn.close()
 
@@ -154,14 +150,14 @@ st.session_state.user_email = email
 
 
 # ---------------------------------------------------
-# SIDEBAR INFO
+# SIDEBAR
 # ---------------------------------------------------
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
 
 # ---------------------------------------------------
-# NO-SHOW ENFORCEMENT
+# ENFORCE NO-SHOWS
 # ---------------------------------------------------
 enforce_no_shows(datetime.now())
 
@@ -187,28 +183,19 @@ if "checkin" in qp:
         """, (st.session_state.user_id, desk_id, today)).fetchone()
 
         if not booking:
-            st.warning("No active booking found for this desk today.")
-
+            st.warning("No active booking found.")
         else:
-            booking_id, start_time, end_time, checked_in = booking
+            booking_id, start_t, end_t, checked_in = booking
 
             if checked_in:
                 st.info("Already checked in.")
-
-            elif start_time <= now_hhmm <= end_time:
+            elif start_t <= now_hhmm <= end_t:
                 c.execute("UPDATE bookings SET checked_in=1 WHERE id=?", (booking_id,))
                 conn.commit()
-
-                audit_log(
-                    st.session_state.user_email,
-                    "QR_CHECK_IN",
-                    f"booking={booking_id}, desk={desk_id}"
-                )
-
+                audit_log(email, "QR_CHECK_IN", f"booking={booking_id}, desk={desk_id}")
                 st.success("Checked in successfully!")
-
             else:
-                st.warning(f"Booking not active. Valid window: {start_id}-{end_time}")
+                st.warning(f"Booking active only between {start_t}–{end_t}")
 
         conn.close()
 
