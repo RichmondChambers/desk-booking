@@ -1,33 +1,43 @@
 import streamlit as st
 from datetime import datetime, date
-
 from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
 
-st.set_page_config(
-    page_title="Desk Booking",
-    layout="wide",
+st.set_page_config(page_title="Desk Booking", layout="wide")
+
+# -----------------------------
+# GOOGLE LOGIN (Streamlit Auth)
+# -----------------------------
+from streamlit_auth import GoogleAuth
+
+auth = GoogleAuth(
+    client_id=st.secrets["GOOGLE_CLIENT_ID"],
+    client_secret=st.secrets["GOOGLE_CLIENT_SECRET"],
+    redirect_uri="https://richmond-chambers-desk-booking.streamlit.app/oauth2callback",
+    scope=["openid", "email", "profile"],
 )
 
-# ---------------------------------------------------
-# STREAMLIT CLOUD AUTHENTICATION
-# ---------------------------------------------------
-user = st.experimental_user
+user_info = auth.login()
 
-# Case 1 — user is NOT logged in yet
-if user is None:
+# Show login screen if not authenticated
+if not user_info:
     st.title("Richmond Chambers – Internal Tool")
-    st.write("Please sign in with your Richmond Chambers Google Workspace account to continue.")
+    st.write("Please sign in with a Richmond Chambers Google Workspace account to access this app.")
+    auth.render_login_button()
     st.stop()
 
-# Case 2 — user is logged in, pull required fields
-email = user.get("email")
-name = user.get("name") or (email.split("@")[0] if email else "User")
+# Restrict domain
+email = user_info["email"]
+if not email.endswith(st.secrets["ALLOWED_DOMAIN"]):
+    st.error("Access denied. You must use a @richmondchambers.com account.")
+    st.stop()
 
-# ---------------------------------------------------
-# DATABASE INITIALISATION
-# ---------------------------------------------------
+name = user_info.get("name", email.split("@")[0])
+
+# -----------------------------
+# DATABASE USER HANDLING
+# -----------------------------
 init_db()
 conn = get_conn()
 c = conn.cursor()
@@ -50,78 +60,18 @@ if not row:
 
 conn.close()
 
-# ---------------------------------------------------
-# STORE IN SESSION
-# ---------------------------------------------------
 st.session_state.user_id = row[0]
 st.session_state.user_name = row[1]
 st.session_state.role = row[2]
 st.session_state.can_book = row[3]
 st.session_state.user_email = email
 
-# ---------------------------------------------------
-# SIDEBAR
-# ---------------------------------------------------
-st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
+# Sidebar info
+st.sidebar.markdown(f"**User:** {name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
-# ---------------------------------------------------
-# AUTO-ENFORCE NO-SHOW RULES
-# ---------------------------------------------------
+# Enforce no-shows
 enforce_no_shows(datetime.now())
 
-# ---------------------------------------------------
-# QR CHECK-IN LOGIC
-# ---------------------------------------------------
-qp = st.query_params
-if "checkin" in qp:
-    try:
-        desk_id = int(qp["checkin"])
-        today = date.today().strftime("%Y-%m-%d")
-        now_hhmm = datetime.now().strftime("%H:%M")
-
-        conn = get_conn()
-        c = conn.cursor()
-
-        booking = c.execute(
-            """
-            SELECT id, start_time, end_time, checked_in
-            FROM bookings
-            WHERE user_id=? AND desk_id=? AND date=? AND status='booked'
-            """,
-            (st.session_state.user_id, desk_id, today),
-        ).fetchone()
-
-        if not booking:
-            st.warning("No active booking found for this desk today.")
-        else:
-            booking_id, start_time, end_time, checked_in = booking
-
-            if checked_in:
-                st.info("Already checked in.")
-            elif start_time <= now_hhmm <= end_time:
-                c.execute(
-                    "UPDATE bookings SET checked_in=1 WHERE id=?",
-                    (booking_id,),
-                )
-                conn.commit()
-                audit_log(
-                    st.session_state.user_email,
-                    "QR_CHECK_IN",
-                    f"booking={booking_id}, desk={desk_id}",
-                )
-                st.success("Checked in successfully!")
-            else:
-                st.warning(f"Booking not active. Window: {start_time}–{end_time}")
-
-        conn.close()
-
-    finally:
-        st.query_params.clear()
-        st.rerun()
-
-# ---------------------------------------------------
-# MAIN PAGE
-# ---------------------------------------------------
 st.title("Desk Booking System")
-st.write("Use the sidebar to navigate between system functions.")
+st.write("Use the sidebar to navigate between functions.")
