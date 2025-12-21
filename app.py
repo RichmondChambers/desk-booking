@@ -21,7 +21,7 @@ OAUTH = st.secrets["oauth"]
 
 CLIENT_ID = OAUTH["client_id"]
 CLIENT_SECRET = OAUTH["client_secret"]
-REDIRECT_URI = OAUTH["redirect_uri"]
+REDIRECT_URI = st.secrets["oauth"]["redirect_uri"]
 ALLOWED_DOMAIN = OAUTH["allowed_domain"].lower()
 APP_URL = OAUTH["app_url"]
 
