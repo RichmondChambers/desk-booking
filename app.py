@@ -1,12 +1,10 @@
 import streamlit as st
 from datetime import datetime, date
+from authlib.integrations.requests_client import OAuth2Session
 
 from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
-
-# CORRECT AUTHLIB IMPORT
-from authlib.integrations.requests_client import OAuth2Session
 
 
 # ---------------------------------------------------
@@ -16,13 +14,13 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 
 
 # ---------------------------------------------------
-# LOAD OAUTH SECRETS
+# LOAD OAUTH SETTINGS
 # ---------------------------------------------------
 OAUTH = st.secrets["oauth"]
 
 CLIENT_ID = OAUTH["client_id"]
 CLIENT_SECRET = OAUTH["client_secret"]
-REDIRECT_URI = OAUTH["redirect_uri"]
+REDIRECT_URI = OAUTH["redirect_uri"]              # MUST match Google Console EXACTLY
 ALLOWED_DOMAIN = OAUTH["allowed_domain"].lower()
 APP_URL = OAUTH["app_url"]
 
@@ -32,9 +30,9 @@ USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 
 # ---------------------------------------------------
-# LOGIN PAGE
+# LOGIN SCREEN
 # ---------------------------------------------------
-def show_login():
+def show_login_screen():
     oauth = OAuth2Session(
         client_id=CLIENT_ID,
         redirect_uri=REDIRECT_URI,
@@ -54,18 +52,18 @@ def show_login():
 
 
 # ---------------------------------------------------
-# HANDLE GOOGLE CALLBACK (?code=…)
+# HANDLE GOOGLE CALLBACK (?code=...)
 # ---------------------------------------------------
 if "token" not in st.session_state:
 
-    qp = st.query_params
+    params = st.query_params
 
-    if "code" in qp:
-        code = qp["code"]
+    if "code" in params:
+        code = params["code"]
 
         oauth = OAuth2Session(
             client_id=CLIENT_ID,
-            redirect_uri=REDIRECT_URI
+            redirect_uri=REDIRECT_URI,
         )
 
         token = oauth.fetch_token(
@@ -74,24 +72,25 @@ if "token" not in st.session_state:
             client_secret=CLIENT_SECRET
         )
 
+        # Save token
         st.session_state["token"] = token
 
-        # Clear query parameters from URL
+        # Remove query params from URL
         st.query_params.clear()
 
-        # Redirect cleanly to root
+        # Redirect user to the clean app root
         st.markdown(
             f'<meta http-equiv="refresh" content="0;url={APP_URL}" />',
             unsafe_allow_html=True
         )
         st.stop()
 
-    # Otherwise show login
-    show_login()
+    # No token and no callback yet → Show login screen
+    show_login_screen()
 
 
 # ---------------------------------------------------
-# FETCH USER INFO
+# FETCH USER INFO (OAuth token exists)
 # ---------------------------------------------------
 oauth = OAuth2Session(
     client_id=CLIENT_ID,
@@ -108,7 +107,7 @@ name = userinfo.get("name") or email.split("@")[0]
 # DOMAIN RESTRICTION
 # ---------------------------------------------------
 if not email.endswith("@" + ALLOWED_DOMAIN):
-    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} account.")
+    st.error(f"Access denied. Please use a @{ALLOWED_DOMAIN} Google account.")
     st.stop()
 
 
@@ -131,10 +130,10 @@ if not row:
     """, (name, email))
     conn.commit()
 
-    row = c.execute("""
-        SELECT id, name, role, can_book
-        FROM users WHERE email=?
-    """, (email,)).fetchone()
+    row = c.execute(
+        "SELECT id, name, role, can_book FROM users WHERE email=?",
+        (email,),
+    ).fetchone()
 
 conn.close()
 
@@ -150,7 +149,7 @@ st.session_state.user_email = email
 
 
 # ---------------------------------------------------
-# SIDEBAR
+# SIDEBAR PROFILE
 # ---------------------------------------------------
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
@@ -165,13 +164,13 @@ enforce_no_shows(datetime.now())
 # ---------------------------------------------------
 # QR CHECK-IN HANDLER
 # ---------------------------------------------------
-qp = st.query_params
+params = st.query_params
 
-if "checkin" in qp:
+if "checkin" in params:
     try:
-        desk_id = int(qp["checkin"])
-        today = date.today().strftime("%Y-%m-%d")
-        now_hhmm = datetime.now().strftime("%H:%M")
+        desk_id = int(params["checkin"])
+        today = datetime.today().strftime("%Y-%m-%d")
+        now_time = datetime.now().strftime("%H:%M")
 
         conn = get_conn()
         c = conn.cursor()
@@ -183,19 +182,20 @@ if "checkin" in qp:
         """, (st.session_state.user_id, desk_id, today)).fetchone()
 
         if not booking:
-            st.warning("No active booking found.")
+            st.warning("No active booking found for this desk today.")
         else:
             booking_id, start_t, end_t, checked_in = booking
 
             if checked_in:
                 st.info("Already checked in.")
-            elif start_t <= now_hhmm <= end_t:
+            elif start_t <= now_time <= end_t:
                 c.execute("UPDATE bookings SET checked_in=1 WHERE id=?", (booking_id,))
                 conn.commit()
-                audit_log(email, "QR_CHECK_IN", f"booking={booking_id}, desk={desk_id}")
-                st.success("Checked in successfully!")
+
+                audit_log(email, "QR_CHECK_IN", f"{booking_id}, desk={desk_id}")
+                st.success("Checked in successfully.")
             else:
-                st.warning(f"Booking active only between {start_t}–{end_t}")
+                st.warning(f"Booking only valid between {start_t}–{end_t}.")
 
         conn.close()
 
