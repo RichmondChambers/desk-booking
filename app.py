@@ -5,31 +5,28 @@ from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
 
-# ---------------------------------------------------
-# Streamlit App Configuration
-# ---------------------------------------------------
 st.set_page_config(
     page_title="Desk Booking",
     layout="wide",
 )
 
 # ---------------------------------------------------
-# Streamlit Cloud Authentication
+# STREAMLIT CLOUD AUTHENTICATION
 # ---------------------------------------------------
 user = st.experimental_user
 
-# If user is not logged in yet → show login screen
+# Case 1 — user is NOT logged in yet
 if user is None:
     st.title("Richmond Chambers – Internal Tool")
-    st.write("Please sign in with your Richmond Chambers Google Workspace account to access this app.")
+    st.write("Please sign in with your Richmond Chambers Google Workspace account to continue.")
     st.stop()
 
-# User is logged in: extract fields (DICT, not object!)
+# Case 2 — user is logged in, pull required fields
 email = user.get("email")
-name = user.get("name") or email.split("@")[0]
+name = user.get("name") or (email.split("@")[0] if email else "User")
 
 # ---------------------------------------------------
-# Database Setup & Ensure User Exists
+# DATABASE INITIALISATION
 # ---------------------------------------------------
 init_db()
 conn = get_conn()
@@ -40,14 +37,12 @@ row = c.execute(
     (email,),
 ).fetchone()
 
-# If new user, add to DB
 if not row:
     c.execute(
         "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
         (name, email),
     )
     conn.commit()
-
     row = c.execute(
         "SELECT id, name, role, can_book FROM users WHERE email=?",
         (email,),
@@ -56,7 +51,7 @@ if not row:
 conn.close()
 
 # ---------------------------------------------------
-# Store user in session state
+# STORE IN SESSION
 # ---------------------------------------------------
 st.session_state.user_id = row[0]
 st.session_state.user_name = row[1]
@@ -65,18 +60,18 @@ st.session_state.can_book = row[3]
 st.session_state.user_email = email
 
 # ---------------------------------------------------
-# Sidebar Identity
+# SIDEBAR
 # ---------------------------------------------------
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
 # ---------------------------------------------------
-# Enforce No-Show Rules
+# AUTO-ENFORCE NO-SHOW RULES
 # ---------------------------------------------------
 enforce_no_shows(datetime.now())
 
 # ---------------------------------------------------
-# QR Code Check-In Handler
+# QR CHECK-IN LOGIC
 # ---------------------------------------------------
 qp = st.query_params
 if "checkin" in qp:
@@ -110,16 +105,14 @@ if "checkin" in qp:
                     (booking_id,),
                 )
                 conn.commit()
-
                 audit_log(
                     st.session_state.user_email,
                     "QR_CHECK_IN",
                     f"booking={booking_id}, desk={desk_id}",
                 )
-
                 st.success("Checked in successfully!")
             else:
-                st.warning(f"Booking not active. Valid during {start_time}–{end_time}.")
+                st.warning(f"Booking not active. Window: {start_time}–{end_time}")
 
         conn.close()
 
@@ -128,7 +121,7 @@ if "checkin" in qp:
         st.rerun()
 
 # ---------------------------------------------------
-# Main Page
+# MAIN PAGE
 # ---------------------------------------------------
 st.title("Desk Booking System")
-st.write("Use the sidebar to navigate between functions.")
+st.write("Use the sidebar to navigate between system functions.")
