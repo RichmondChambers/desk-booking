@@ -1,3 +1,5 @@
+st.write("DEBUG USER OBJECT:", st.experimental_user)
+
 import streamlit as st
 from datetime import datetime, date
 
