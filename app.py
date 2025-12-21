@@ -30,11 +30,14 @@ USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
 
 # ---------------------------------------------------
-# AUTHENTICATION LOGIC
+# LOGIN SCREEN
 # ---------------------------------------------------
 def show_login_button():
-    """Display a Google login button."""
-    oauth = OAuth2Session(CLIENT_ID, redirect_uri=REDIRECT_URI)
+    oauth = OAuth2Session(
+        CLIENT_ID,
+        redirect_uri=REDIRECT_URI
+    )
+
     auth_url, _ = oauth.create_authorization_url(
         AUTH_URL,
         access_type="offline",
@@ -48,14 +51,21 @@ def show_login_button():
     st.stop()
 
 
-# Handle OAuth callback (?code=...)
+# ---------------------------------------------------
+# HANDLE GOOGLE CALLBACK
+# ---------------------------------------------------
 if "token" not in st.session_state:
 
-    # Step 1: User returned from Google with a ?code
+    # Step 1 — Google redirected back with ?code
     if "code" in st.query_params:
         code = st.query_params["code"]
 
-        oauth = OAuth2Session(CLIENT_ID, CLIENT_SECRET, redirect_uri=REDIRECT_URI)
+        oauth = OAuth2Session(
+            CLIENT_ID,
+            client_secret=CLIENT_SECRET,
+            redirect_uri=REDIRECT_URI
+        )
+
         token = oauth.fetch_token(
             TOKEN_URL,
             code=code,
@@ -66,19 +76,28 @@ if "token" not in st.session_state:
         st.query_params.clear()
         st.rerun()
 
-    # Step 2: No token and no callback → show login
+    # Step 2 — no token yet → show login
     show_login_button()
 
 
-# Step 3: Token exists → fetch user info
-oauth = OAuth2Session(CLIENT_ID, CLIENT_SECRET, token=st.session_state["token"])
+# ---------------------------------------------------
+# STEP 3 — FETCH USER INFO
+# ---------------------------------------------------
+oauth = OAuth2Session(
+    CLIENT_ID,
+    client_secret=CLIENT_SECRET,
+    token=st.session_state["token"]
+)
+
 userinfo = oauth.get(USERINFO_URL).json()
 
 email = userinfo.get("email")
 name = userinfo.get("name") or email.split("@")[0]
 
 
-# Enforce allowed domain
+# ---------------------------------------------------
+# ENFORCE RICHMOND CHAMBERS DOMAIN
+# ---------------------------------------------------
 if not email.endswith("richmondchambers.com"):
     st.error("Access denied. Please use a @richmondchambers.com Google account.")
     st.stop()
@@ -121,7 +140,7 @@ st.session_state.user_email = email
 
 
 # ---------------------------------------------------
-# SIDEBAR INFORMATION
+# SIDEBAR
 # ---------------------------------------------------
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
@@ -134,7 +153,7 @@ enforce_no_shows(datetime.now())
 
 
 # ---------------------------------------------------
-# QR CODE CHECK-IN HANDLER
+# QR CHECK-IN HANDLER
 # ---------------------------------------------------
 qp = st.query_params
 
@@ -158,13 +177,11 @@ if "checkin" in qp:
 
         if not booking:
             st.warning("No active booking found for this desk today.")
-
         else:
             booking_id, start_time, end_time, checked_in = booking
 
             if checked_in:
                 st.info("Already checked in.")
-
             elif start_time <= now_hhmm <= end_time:
                 c.execute(
                     "UPDATE bookings SET checked_in=1 WHERE id=?",
@@ -179,7 +196,6 @@ if "checkin" in qp:
                 )
 
                 st.success("Checked in successfully!")
-
             else:
                 st.warning(f"Booking not active. Valid window: {start_time}–{end_time}")
 
@@ -191,8 +207,7 @@ if "checkin" in qp:
 
 
 # ---------------------------------------------------
-# MAIN DASHBOARD PAGE
+# MAIN PAGE
 # ---------------------------------------------------
 st.title("Desk Booking System")
 st.write("Use the sidebar to navigate between system functions.")
-
