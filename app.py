@@ -1,3 +1,4 @@
+st.write("DEBUG QUERY PARAMS:", st.query_params)
 import streamlit as st
 from datetime import datetime, date
 
