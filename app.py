@@ -20,7 +20,7 @@ OAUTH = st.secrets["oauth"]
 
 CLIENT_ID = OAUTH["client_id"]
 CLIENT_SECRET = OAUTH["client_secret"]
-REDIRECT_URI = OAUTH["redirect_uri"]              # MUST match Google Console EXACTLY
+REDIRECT_URI = OAUTH["redirect_uri"]     # MUST MATCH GOOGLE EXACTLY
 ALLOWED_DOMAIN = OAUTH["allowed_domain"].lower()
 APP_URL = OAUTH["app_url"]
 
@@ -36,9 +36,8 @@ def show_login_screen():
     oauth = OAuth2Session(
         client_id=CLIENT_ID,
         redirect_uri=REDIRECT_URI,
-        scope="openid email profile"
+        scope="openid email profile",
     )
-
     auth_url, _ = oauth.create_authorization_url(
         AUTH_URL,
         access_type="offline",
@@ -52,7 +51,7 @@ def show_login_screen():
 
 
 # ---------------------------------------------------
-# HANDLE GOOGLE CALLBACK (?code=...)
+# HANDLE OAUTH CALLBACK
 # ---------------------------------------------------
 if "token" not in st.session_state:
 
@@ -72,31 +71,23 @@ if "token" not in st.session_state:
             client_secret=CLIENT_SECRET
         )
 
-        # Save token
         st.session_state["token"] = token
 
-        # Remove query params from URL
+        # Clean the URL
         st.query_params.clear()
 
-        # Redirect user to the clean app root
-        st.markdown(
-            f'<meta http-equiv="refresh" content="0;url={APP_URL}" />',
-            unsafe_allow_html=True
-        )
+        st.markdown(f"""
+            <meta http-equiv="refresh" content="0; url={APP_URL}" />
+        """, unsafe_allow_html=True)
         st.stop()
 
-    # No token and no callback yet → Show login screen
     show_login_screen()
 
 
 # ---------------------------------------------------
-# FETCH USER INFO (OAuth token exists)
+# FETCH USER INFO
 # ---------------------------------------------------
-oauth = OAuth2Session(
-    client_id=CLIENT_ID,
-    token=st.session_state["token"]
-)
-
+oauth = OAuth2Session(client_id=CLIENT_ID, token=st.session_state["token"])
 userinfo = oauth.get(USERINFO_URL).json()
 
 email = userinfo.get("email", "").lower()
@@ -162,7 +153,7 @@ enforce_no_shows(datetime.now())
 
 
 # ---------------------------------------------------
-# QR CHECK-IN HANDLER
+# QR CHECK-IN
 # ---------------------------------------------------
 params = st.query_params
 
@@ -181,21 +172,19 @@ if "checkin" in params:
             WHERE user_id=? AND desk_id=? AND date=? AND status='booked'
         """, (st.session_state.user_id, desk_id, today)).fetchone()
 
-        if not booking:
-            st.warning("No active booking found for this desk today.")
-        else:
+        if booking:
             booking_id, start_t, end_t, checked_in = booking
-
             if checked_in:
                 st.info("Already checked in.")
             elif start_t <= now_time <= end_t:
                 c.execute("UPDATE bookings SET checked_in=1 WHERE id=?", (booking_id,))
                 conn.commit()
-
                 audit_log(email, "QR_CHECK_IN", f"{booking_id}, desk={desk_id}")
-                st.success("Checked in successfully.")
+                st.success("Checked in.")
             else:
-                st.warning(f"Booking only valid between {start_t}–{end_t}.")
+                st.warning(f"Booking only valid between {start_t}–{end_t}")
+        else:
+            st.warning("No active booking found.")
 
         conn.close()
 
