@@ -5,32 +5,32 @@ from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
 
-# -------------------------------
+# ---------------------------------------------------
 # Streamlit App Configuration
-# -------------------------------
+# ---------------------------------------------------
 st.set_page_config(
     page_title="Desk Booking",
     layout="wide",
 )
 
-# -------------------------------
+# ---------------------------------------------------
 # Streamlit Cloud Authentication
-# -------------------------------
+# ---------------------------------------------------
 user = st.experimental_user
 
+# If user is not logged in yet → show login screen
 if user is None:
-    # This produces a login screen identical to your screenshot.
     st.title("Richmond Chambers – Internal Tool")
-    st.write("Please sign in with a Richmond Chambers Google Workspace account to access this app.")
+    st.write("Please sign in with your Richmond Chambers Google Workspace account to access this app.")
     st.stop()
 
-# After login (user is now authenticated)
-email = user.email
-name = user.name or email.split("@")[0]
+# User is logged in: extract fields (DICT, not object!)
+email = user.get("email")
+name = user.get("name") or email.split("@")[0]
 
-# -------------------------------
+# ---------------------------------------------------
 # Database Setup & Ensure User Exists
-# -------------------------------
+# ---------------------------------------------------
 init_db()
 conn = get_conn()
 c = conn.cursor()
@@ -40,8 +40,8 @@ row = c.execute(
     (email,),
 ).fetchone()
 
+# If new user, add to DB
 if not row:
-    # New user — add with default "user" role and booking permission enabled
     c.execute(
         "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
         (name, email),
@@ -55,29 +55,29 @@ if not row:
 
 conn.close()
 
-# -------------------------------
-# Store User in Session State
-# -------------------------------
+# ---------------------------------------------------
+# Store user in session state
+# ---------------------------------------------------
 st.session_state.user_id = row[0]
 st.session_state.user_name = row[1]
 st.session_state.role = row[2]
 st.session_state.can_book = row[3]
 st.session_state.user_email = email
 
-# -------------------------------
+# ---------------------------------------------------
 # Sidebar Identity
-# -------------------------------
+# ---------------------------------------------------
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
-# -------------------------------
+# ---------------------------------------------------
 # Enforce No-Show Rules
-# -------------------------------
+# ---------------------------------------------------
 enforce_no_shows(datetime.now())
 
-# -------------------------------
+# ---------------------------------------------------
 # QR Code Check-In Handler
-# -------------------------------
+# ---------------------------------------------------
 qp = st.query_params
 if "checkin" in qp:
     try:
@@ -105,7 +105,6 @@ if "checkin" in qp:
             if checked_in:
                 st.info("Already checked in.")
             elif start_time <= now_hhmm <= end_time:
-                # Mark as checked in
                 c.execute(
                     "UPDATE bookings SET checked_in=1 WHERE id=?",
                     (booking_id,),
@@ -120,9 +119,7 @@ if "checkin" in qp:
 
                 st.success("Checked in successfully!")
             else:
-                st.warning(
-                    f"Booking not active. Only valid during {start_time}–{end_time}."
-                )
+                st.warning(f"Booking not active. Valid during {start_time}–{end_time}.")
 
         conn.close()
 
@@ -130,8 +127,8 @@ if "checkin" in qp:
         st.query_params.clear()
         st.rerun()
 
-# -------------------------------
-# Main Page Content
-# -------------------------------
+# ---------------------------------------------------
+# Main Page
+# ---------------------------------------------------
 st.title("Desk Booking System")
 st.write("Use the sidebar to navigate between functions.")
