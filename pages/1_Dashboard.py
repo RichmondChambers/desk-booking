@@ -1,42 +1,30 @@
 import streamlit as st
-from datetime import datetime
-from utils.db import get_conn
 
+
+# ---------------------------------------------------
+# PAGE SETUP
+# ---------------------------------------------------
 st.title("Dashboard")
-
-# --- User Details ---
 st.subheader("Your Profile")
+
+
+# ---------------------------------------------------
+# SESSION STATE SAFETY
+# ---------------------------------------------------
+st.session_state.setdefault("user_name", "Internal User")
+st.session_state.setdefault("user_email", "internal.user@richmondchambers.com")
+st.session_state.setdefault("role", "user")
+st.session_state.setdefault("can_book", 1)
+
+
+# ---------------------------------------------------
+# PROFILE DISPLAY
+# ---------------------------------------------------
 st.write(f"**Name:** {st.session_state.user_name}")
 st.write(f"**Email:** {st.session_state.user_email}")
 st.write(f"**Role:** {st.session_state.role}")
 
-# --- Booking Summary ---
-st.subheader("Today's Bookings")
-
-conn = get_conn()
-c = conn.cursor()
-
-rows = c.execute("""
-    SELECT desk_id, start_time, end_time, status, checked_in
-    FROM bookings
-    WHERE user_id=? AND date=?
-    ORDER BY start_time
-""", (st.session_state.user_id, datetime.today().strftime("%Y-%m-%d"))).fetchall()
-
-conn.close()
-
-if not rows:
-    st.info("You have no bookings for today.")
+if not st.session_state.can_book:
+    st.warning("You do not currently have permission to book desks.")
 else:
-    for desk, start, end, status, checked_in in rows:
-        st.markdown(
-            f"""
-            • **Desk {desk}**  
-            • Time: **{start}–{end}**  
-            • Status: **{status}**  
-            • Checked in: **{"Yes" if checked_in else "No"}**
-            """
-        )
-
-st.write("---")
-st.write("Use the sidebar to navigate to booking features.")
+    st.success("You are permitted to book desks.")
