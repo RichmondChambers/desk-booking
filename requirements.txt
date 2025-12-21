@@ -1,6 +1,2 @@
 streamlit
-authlib==1.3.0
-requests
-google-auth
-google-auth-oauthlib
 qrcode[pil]
