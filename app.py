@@ -1,6 +1,6 @@
 import streamlit as st
-st.write("DEBUG session_state:", dict(st.session_state))
 from datetime import datetime, date
+
 from utils.db import init_db, get_conn
 from utils.rules import enforce_no_shows
 from utils.audit import audit_log
@@ -27,20 +27,31 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Initialise database
-init_db()
+# --- Built-in Streamlit authentication ---
+user = st.experimental_user
 
-# Always process OAuth callback first
-handle_oauth_response()
-
-# --- Authentication handling (must run first) ---
-handle_oauth_response()
-
-if "user_id" not in st.session_state:
+if not user or not user.is_authenticated:
     st.title("Desk Booking")
     st.write("Please sign in with your Google Workspace account.")
-    google_login_link()
     st.stop()
+
+# Map Streamlit user to session_state
+st.session_state.user_email = user.email
+st.session_state.user_name = user.name or user.email
+st.session_state.user_id = user.email  # stable identifier
+
+# Simple role logic (can be expanded later)
+if user.email.endswith("@richmondchambers.com"):
+    st.session_state.role = "staff"
+else:
+    st.session_state.role = "guest"
+
+# Sidebar
+st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
+st.sidebar.markdown(f"**Role:** {st.session_state.role}")
+
+# Initialise database
+init_db()
 
 # Enforce no-shows on each load
 enforce_no_shows(datetime.now())
@@ -90,7 +101,5 @@ if "checkin" in qp:
         conn.close()
     finally:
         st.query_params.clear()
-
-# Sidebar
-st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
+ate.user_name}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
