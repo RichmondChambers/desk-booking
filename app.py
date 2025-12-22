@@ -8,6 +8,24 @@ from utils.db import init_db, get_conn
 st.set_page_config(page_title="Desk Booking", layout="wide")
 
 # ---------------------------------------------------
+# LOGOUT FUNCTION
+# ---------------------------------------------------
+def logout():
+    for key in [
+        "oauth_email",
+        "oauth_name",
+        "user_id",
+        "user_email",
+        "user_name",
+        "role",
+        "can_book",
+    ]:
+        st.session_state.pop(key, None)
+
+    st.query_params.clear()
+    st.experimental_rerun()
+
+# ---------------------------------------------------
 # HANDLE OAUTH CALLBACK (STATELESS, STREAMLIT-SAFE)
 # ---------------------------------------------------
 query_params = st.query_params
@@ -112,6 +130,11 @@ if st.session_state.user_id is None:
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Email:** {st.session_state.user_email}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
+
+st.sidebar.divider()
+
+if st.sidebar.button("Log out"):
+    logout()
 
 # ---------------------------------------------------
 # MAIN APP
