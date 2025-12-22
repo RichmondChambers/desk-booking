@@ -23,7 +23,7 @@ def logout():
         st.session_state.pop(key, None)
 
     st.query_params.clear()
-    st.experimental_rerun()
+    st.rerun()
 
 # ---------------------------------------------------
 # HANDLE OAUTH CALLBACK (STATELESS, STREAMLIT-SAFE)
