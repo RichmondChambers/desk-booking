@@ -1,8 +1,8 @@
-from utils.auth import require_login
+import streamlit as st
 import requests
 from google_auth_oauthlib.flow import Flow
 
-import streamlit as st
+from utils.auth import require_login
 from utils.db import init_db, get_conn
 
 st.set_page_config(page_title="Desk Booking", layout="wide")
@@ -11,17 +11,11 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 # HANDLE OAUTH CALLBACK
 # ---------------------------------------------------
 query_params = st.query_params
-if "code" in query_params and "oauth_email" not in st.session_state:
-
-  # ---------------------------------------------------
-# HANDLE OAUTH CALLBACK
-# ---------------------------------------------------
-query_params = st.query_params
 
 if "code" in query_params and "oauth_email" not in st.session_state:
 
     if "oauth_state" not in st.session_state:
-        st.error("OAuth state missing. Please try signing in again.")
+        st.error("OAuth state missing. Please click 'Sign in with Google' again.")
         st.stop()
 
     flow = Flow.from_client_config(
@@ -40,17 +34,16 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     )
 
     flow.fetch_token(code=query_params["code"])
-
     credentials = flow.credentials
 
-    import requests
     userinfo = requests.get(
         "https://openidconnect.googleapis.com/v1/userinfo",
         headers={"Authorization": f"Bearer {credentials.token}"},
+        timeout=10,
     ).json()
 
-    email = userinfo.get("email", "").lower()
-    name = userinfo.get("name")
+    email = (userinfo.get("email") or "").lower()
+    name = userinfo.get("name") or email.split("@")[0]
 
     if not email.endswith("@richmondchambers.com"):
         st.error("Access restricted to Richmond Chambers staff.")
@@ -60,37 +53,19 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     st.session_state["oauth_name"] = name
 
     # cleanup
-    del st.session_state["oauth_state"]
-    st.query_params.clear()
-
-    credentials = flow.credentials
-
-    userinfo = requests.get(
-        "https://openidconnect.googleapis.com/v1/userinfo",
-        headers={"Authorization": f"Bearer {credentials.token}"},
-    ).json()
-
-    email = userinfo.get("email", "").lower()
-    name = userinfo.get("name")
-
-    if not email.endswith("@richmondchambers.com"):
-        st.error("Access restricted to Richmond Chambers staff.")
-        st.stop()
-
-    st.session_state["oauth_email"] = email
-    st.session_state["oauth_name"] = name
+    st.session_state.pop("oauth_state", None)
     st.query_params.clear()
 
 # ---------------------------------------------------
-# REQUIRE LOGIN
+# REQUIRE LOGIN (shows sign-in link and stops if not logged in)
 # ---------------------------------------------------
 require_login()
-
 
 # ---------------------------------------------------
 # INITIALISE DATABASE
 # ---------------------------------------------------
 init_db()
+
 
 # ---------------------------------------------------
 # INITIALISE SESSION DEFAULTS
