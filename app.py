@@ -101,20 +101,42 @@ if st.session_state.user_id is None:
     c = conn.cursor()
 
     row = c.execute(
-        "SELECT id, name, role, can_book FROM users WHERE email=?",
+        """
+        SELECT id, name, role, can_book, is_active
+        FROM users
+        WHERE email=?
+        """,
         (email,),
     ).fetchone()
 
+    # First login → create user
     if not row:
         c.execute(
-            "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
+            """
+            INSERT INTO users (name, email, role, can_book, is_active)
+            VALUES (?, ?, 'user', 1, 1)
+            """,
             (name, email),
         )
         conn.commit()
+
         row = c.execute(
-            "SELECT id, name, role, can_book FROM users WHERE email=?",
+            """
+            SELECT id, name, role, can_book, is_active
+            FROM users
+            WHERE email=?
+            """,
             (email,),
         ).fetchone()
+
+    # ---- BLOCK DEACTIVATED USERS ----
+    if row[4] == 0:
+        conn.close()
+        st.error(
+            "Your account has been deactivated. "
+            "Please contact an administrator if you believe this is an error."
+        )
+        st.stop()
 
     conn.close()
 
