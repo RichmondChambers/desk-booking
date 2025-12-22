@@ -292,12 +292,12 @@ function statusForCell(key) {{
 }}
 
 function showInfo(deskId, timeStr, key) {
-  const deskName = data.deskNames[deskId] ?? String(deskId);
-  let text = `${data.dateLabel} · ${deskName} · ${timeStr} · ${statusForCell(key)}`;
+  const deskName = (data.deskNames[deskId] !== undefined) ? data.deskNames[deskId] : String(deskId);
+  let text = data.dateLabel + " · " + deskName + " · " + timeStr + " · " + statusForCell(key);
 
   if (data.booked[key]) {
     const bookedBy = data.mine.includes(key) ? "You" : data.booked[key];
-    text += ` · Booked by: ${bookedBy}`;
+    text += " · Booked by: " + bookedBy;
   }
 
   info.innerText = text;
