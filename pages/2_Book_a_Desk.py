@@ -62,7 +62,7 @@ DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # --------------------------------------------------
-# TIME SLOTS (09:00 → 18:00, SHOW 18:00)
+# TIME SLOTS (09:00 → 18:00)
 # --------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
@@ -84,7 +84,7 @@ def is_past(t: time) -> bool:
 
 
 # --------------------------------------------------
-# HELPER: USER INITIALS (STEP 1)
+# HELPER: USER INITIALS
 # --------------------------------------------------
 def make_initials(name: str) -> str:
     parts = [p for p in name.strip().split() if p]
@@ -119,10 +119,7 @@ for desk_id, start, end, user_name, uid in rows:
     for t in slots:
         if s <= t < e:
             key = f"{desk_id}_{t.strftime('%H:%M')}"
-            booked[key] = {
-                "name": user_name,
-                "initials": init,
-            }
+            booked[key] = {"name": user_name, "initials": init}
             if uid == st.session_state.user_id:
                 mine.add(key)
 
@@ -178,15 +175,38 @@ html, body { margin:0; padding:0; font-family:inherit; }
 .grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
 .time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
 .header { font-weight:600; }
-.cell { height:42px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); }
+
+.cell {
+  height:42px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
 .available { background:#ffffff; cursor:pointer; }
 .available:hover { outline:2px solid #009fdf; }
 .selected { background:#009fdf !important; }
 .own { background:#009fdf; cursor:not-allowed; }
 .booked { background:#c0392b; cursor:not-allowed; }
 .past { background:#2c2c2c; cursor:not-allowed; }
-#info { margin-bottom:12px; padding:10px 14px; border-radius:10px;
-        background:rgba(255,255,255,0.08); color:#e5e7eb; min-height:38px; }
+
+.cell-label {
+  font-size:13px;
+  font-weight:600;
+  color:#ffffff;
+  letter-spacing:0.5px;
+}
+
+#info {
+  margin-bottom:12px;
+  padding:10px 14px;
+  border-radius:10px;
+  background:rgba(255,255,255,0.08);
+  color:#e5e7eb;
+  min-height:38px;
+}
 </style>
 
 <div id="info">Hover over a slot to see details.</div>
@@ -223,17 +243,16 @@ let selected = new Set(data.selected);
 let dragging = false;
 
 function statusForCell(key) {
-  if (data.mine.includes(key)) return "Your booking";
-  if (data.booked[key]) return "Booked";
+  if (data.mine.includes(key)) return "Booked · You";
+  if (data.booked[key]) return "Booked · " + data.booked[key].name;
   if (data.past.includes(key)) return "Past";
   return "Available";
 }
 
 function showInfo(deskId, timeStr, key) {
   const deskName = data.deskNames[deskId] ?? String(deskId);
-  let text = `${data.dateLabel} · ${deskName} · ${timeStr} · ${statusForCell(key)}`;
-  if (data.booked[key]) text += ` · ${data.booked[key].name}`;
-  info.innerText = text;
+  info.innerText =
+    `${data.dateLabel} · ${deskName} · ${timeStr} · ${statusForCell(key)}`;
 }
 
 function toggle(key, el) {
@@ -273,6 +292,13 @@ data.times.forEach(timeStr => {
     else c.className = "cell available";
 
     if (selected.has(key)) c.classList.add("selected");
+
+    if (data.booked[key]) {
+      const label = document.createElement("div");
+      label.className = "cell-label";
+      label.innerText = data.booked[key].initials;
+      c.appendChild(label);
+    }
 
     c.onmouseenter = () => showInfo(deskId, timeStr, key);
     c.onmousedown = () => {
