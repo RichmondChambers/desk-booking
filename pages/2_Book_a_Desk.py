@@ -291,12 +291,17 @@ function statusForCell(key) {{
   return "Available";
 }}
 
-function showInfo(deskId, timeStr, key) {{
+function showInfo(deskId, timeStr, key) {
   const deskName = data.deskNames[deskId] ?? String(deskId);
-  let text = `${{data.dateLabel}} · ${{deskName}} · ${{timeStr}} · ${{statusForCell(key)}}`;
-  if (data.booked[key]) text += ` · ${{data.booked[key]}}`;
+  let text = `${data.dateLabel} · ${deskName} · ${timeStr} · ${statusForCell(key)}`;
+
+  if (data.booked[key]) {
+    const bookedBy = data.mine.includes(key) ? "You" : data.booked[key];
+    text += ` · Booked by: ${bookedBy}`;
+  }
+
   info.innerText = text;
-}}
+}
 
 function toggle(key, el) {{
   if (!el.classList.contains("available")) return;
