@@ -9,7 +9,7 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 init_db()
 
 # ---------------------------------------------------
-# INITIALISE SESSION KEYS
+# SESSION INITIALISATION
 # ---------------------------------------------------
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", None)
@@ -18,36 +18,37 @@ st.session_state.setdefault("role", "user")
 st.session_state.setdefault("can_book", 1)
 
 # ---------------------------------------------------
-# AUTHENTICATION (RUNS ONLY IF USER NOT YET LOADED)
+# AUTHENTICATION (CLOUD vs LOCAL)
 # ---------------------------------------------------
 if st.session_state.user_id is None:
 
-    user = st.experimental_user   # None if not authenticated
+    user = st.experimental_user  # Cloud provides email; Local usually does not
 
-    # ---- FIX: No .is_authenticated in Streamlit Cloud ----
-    if user is None:
-        st.title("Desk Booking")
-        st.info("Please sign in using your Richmond Chambers Google account.")
-        st.stop()
+    # -----------------------------------------------
+    # CASE 1 — RUNNING LOCALLY (NO AUTH AVAILABLE)
+    # -----------------------------------------------
+    if user is None or getattr(user, "email", None) is None:
+        st.warning("Running in LOCAL DEVELOPMENT MODE — authentication bypassed.")
+        fake_email = "localdev@richmondchambers.com"
+        fake_name = "Local Developer"
 
-    # Extract properties safely
-    email = getattr(user, "email", None)
-    name = getattr(user, "name", None)
+        email = fake_email
+        name = fake_name
 
-    if email is None:
-        st.error("Authentication error: Could not retrieve email address.")
-        st.stop()
+    else:
+        # -----------------------------------------------
+        # CASE 2 — STREAMLIT CLOUD AUTHENTICATED USER
+        # -----------------------------------------------
+        email = user.email.lower()
+        name = user.name or email.split("@")[0]
 
-    email = email.lower()
-    name = name or email.split("@")[0]
-
-    # ---- Domain Check ----
-    if not email.endswith("@richmondchambers.com"):
-        st.error("Access restricted to Richmond Chambers users.")
-        st.stop()
+        # Domain restriction
+        if not email.endswith("@richmondchambers.com"):
+            st.error("Access restricted to Richmond Chambers users.")
+            st.stop()
 
     # ---------------------------------------------------
-    # DATABASE USER LOOKUP
+    # DATABASE USER LOOKUP / CREATION
     # ---------------------------------------------------
     conn = get_conn()
     c = conn.cursor()
@@ -57,7 +58,6 @@ if st.session_state.user_id is None:
         (email,),
     ).fetchone()
 
-    # Create new user if needed
     if not row:
         c.execute(
             "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
@@ -71,9 +71,7 @@ if st.session_state.user_id is None:
 
     conn.close()
 
-    # ---------------------------------------------------
-    # STORE USER DETAILS IN SESSION
-    # ---------------------------------------------------
+    # Save to session
     st.session_state.user_id = row[0]
     st.session_state.user_name = row[1]
     st.session_state.role = row[2]
