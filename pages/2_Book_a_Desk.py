@@ -53,16 +53,10 @@ desks = conn.execute(
     SELECT id
     FROM desks
     WHERE is_active = 1
-      AND (admin_only = 0 OR ? = 'admin')
     ORDER BY id
-    """,
-    (st.session_state.role,),
+    """
 ).fetchall()
 conn.close()
-
-if not desks:
-    st.warning("No desks are available for booking.")
-    st.stop()
 
 DESK_IDS = [d[0] for d in desks]
 
@@ -85,9 +79,7 @@ def generate_slots():
 SLOTS = generate_slots()
 
 def is_past(t):
-    if selected_date != date.today():
-        return False
-    return datetime.combine(date.today(), t) < datetime.now()
+    return selected_date == date.today() and datetime.combine(date.today(), t) < datetime.now()
 
 # =====================================================
 # LOAD BOOKINGS
@@ -112,7 +104,7 @@ for desk_id, start, end, user_name, uid in rows:
     e = time.fromisoformat(end)
     for slot in SLOTS:
         if s <= slot < e:
-            booked[(desk_id, slot)] = f"Booked by {user_name} ({start}–{end})"
+            booked[(desk_id, slot)] = f"{user_name} ({start}–{end})"
             if uid == st.session_state.user_id:
                 mine.add((desk_id, slot))
 
@@ -123,30 +115,32 @@ st.markdown("""
 <style>
 .header-row {
     display: grid;
-    grid-template-columns: 90px repeat(auto-fill, minmax(90px, 1fr));
-    margin: 25px 0 10px 0;
-    text-align: center;
+    grid-template-columns: 90px repeat(3, 1fr);
+    margin: 20px 0 10px;
     font-weight: 600;
+    text-align: center;
 }
-
-.header-cell { padding-bottom: 6px; }
 
 .grid {
     display: grid;
-    grid-template-columns: 90px repeat(auto-fill, minmax(90px, 1fr));
+    grid-template-columns: 90px repeat(3, 1fr);
     gap: 10px;
 }
 
-.time { font-weight: 600; padding-top: 8px; }
+.time {
+    font-weight: 600;
+    padding-top: 6px;
+}
 
 .cell {
     height: 36px;
     border-radius: 8px;
+    border: 1px solid #e5e7eb;
     cursor: pointer;
-    border: 1px solid rgba(0,0,0,0.1);
+    position: relative;
 }
 
-/* COLOURS */
+/* STATES */
 .available { background: #ffffff; }
 .available:hover { background: #f3f4f6; }
 
@@ -163,7 +157,7 @@ st.markdown("""
     left: 50%;
     transform: translateX(-50%);
     background: #111827;
-    color: #fff;
+    color: white;
     padding: 6px 8px;
     font-size: 12px;
     border-radius: 6px;
@@ -185,7 +179,7 @@ st.markdown("""
 # =====================================================
 header = "<div class='header-row'><div></div>"
 for d in DESK_IDS:
-    header += f"<div class='header-cell'>Desk {d}</div>"
+    header += f"<div>Desk {d}</div>"
 header += "</div>"
 st.markdown(header, unsafe_allow_html=True)
 
@@ -198,17 +192,18 @@ payload = {
     "selected": st.session_state.selected_cells,
     "booked": {f"{d}_{t.strftime('%H:%M')}": booked[(d,t)] for (d,t) in booked},
     "mine": [f"{d}_{t.strftime('%H:%M')}" for (d,t) in mine],
-    "past": [f"{d}_{t.strftime('%H:%M')}" for d in DESK_IDS for t in SLOTS if is_past(t)]
+    "past": [f"{d}_{t.strftime('%H:%M')}" for d in DESK_IDS for t in SLOTS if is_past(t)],
 }
 
 payload_json = json.dumps(payload)
 
 # =====================================================
-# GRID
+# GRID HTML
 # =====================================================
 result = st.components.v1.html(
     f"""
 <div class="grid" id="grid"></div>
+
 <script>
 const data = {payload_json};
 const grid = document.getElementById("grid");
@@ -216,25 +211,31 @@ let selected = new Set(data.selected);
 let dragging = false;
 
 data.times.forEach(time => {{
-  grid.appendChild(Object.assign(document.createElement("div"), {{className:"time", innerText:time}}));
+  const t = document.createElement("div");
+  t.className = "time";
+  t.innerText = time;
+  grid.appendChild(t);
+
   data.desks.forEach(desk => {{
     const key = desk + "_" + time;
     const cell = document.createElement("div");
     cell.classList.add("cell");
 
     if (data.booked[key]) {{
-        cell.classList.add("booked");
-        cell.dataset.tooltip = data.booked[key];
-    }} else if (data.mine.includes(key)) cell.classList.add("own");
+      cell.classList.add("booked");
+      cell.dataset.tooltip = data.booked[key];
+    }}
+    else if (data.mine.includes(key)) cell.classList.add("own");
     else if (data.past.includes(key)) cell.classList.add("past");
     else cell.classList.add("available");
 
     if (selected.has(key)) cell.classList.add("selected");
 
     if (cell.classList.contains("available") || cell.classList.contains("selected")) {{
-        cell.onmousedown = () => toggle(key, cell);
-        cell.onmouseover = () => dragging && toggle(key, cell);
+      cell.onmousedown = () => toggle(key, cell);
+      cell.onmouseover = () => dragging && toggle(key, cell);
     }}
+
     grid.appendChild(cell);
   }});
 }});
@@ -243,18 +244,18 @@ document.onmousedown = () => dragging = true;
 document.onmouseup = () => dragging = false;
 
 function toggle(key, cell) {{
-    if (selected.has(key)) {{
-        selected.delete(key);
-        cell.classList.remove("selected");
-    }} else {{
-        selected.add(key);
-        cell.classList.add("selected");
-    }}
-    window.parent.postMessage({{selected:[...selected]}}, "*");
+  if (selected.has(key)) {{
+    selected.delete(key);
+    cell.classList.remove("selected");
+  }} else {{
+    selected.add(key);
+    cell.classList.add("selected");
+  }}
+  window.parent.postMessage({{selected:[...selected]}}, "*");
 }}
 </script>
 """,
-    height=700
+    height=720,
 )
 
 # =====================================================
