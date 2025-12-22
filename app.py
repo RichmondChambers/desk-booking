@@ -8,15 +8,12 @@ from utils.db import init_db, get_conn
 st.set_page_config(page_title="Desk Booking", layout="wide")
 
 # ---------------------------------------------------
-# HANDLE OAUTH CALLBACK
+# HANDLE OAUTH CALLBACK (STATELESS, STREAMLIT-SAFE)
 # ---------------------------------------------------
 query_params = st.query_params
 
-if (
-    "code" in query_params
-    and "oauth_email" not in st.session_state
-    and "oauth_state" in st.session_state
-):
+if "code" in query_params and "oauth_email" not in st.session_state:
+
     flow = Flow.from_client_config(
         {
             "web": {
@@ -28,7 +25,6 @@ if (
             }
         },
         scopes=["openid", "email", "profile"],
-        state=st.session_state["oauth_state"],
         redirect_uri=st.secrets["oauth"]["redirect_uri"],
     )
 
@@ -50,9 +46,6 @@ if (
 
     st.session_state["oauth_email"] = email
     st.session_state["oauth_name"] = name
-
-    # cleanup
-    st.session_state.pop("oauth_state", None)
     st.query_params.clear()
 
 # ---------------------------------------------------
