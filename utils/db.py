@@ -1,5 +1,4 @@
 import sqlite3
-import os
 
 DB_PATH = "data.db"
 
@@ -19,18 +18,10 @@ def init_db():
             name TEXT,
             email TEXT UNIQUE,
             role TEXT,
-            can_book INTEGER
+            can_book INTEGER,
+            is_active INTEGER DEFAULT 1
         )
     """)
-
-    # ---- ADD is_active COLUMN IF MISSING (SAFE FOR SQLITE) ----
-    c.execute("PRAGMA table_info(users)")
-    columns = [row[1] for row in c.fetchall()]
-
-    if "is_active" not in columns:
-        c.execute(
-            "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1"
-        )
 
     # ---------------------------------------------------
     # DESKS TABLE
@@ -75,4 +66,27 @@ def init_db():
     """)
 
     conn.commit()
+    conn.close()
+
+def seed_desks():
+    """
+    Insert default desks if none exist.
+    Safe to run multiple times.
+    """
+    conn = get_conn()
+    c = conn.cursor()
+
+    count = c.execute("SELECT COUNT(*) FROM desks").fetchone()[0]
+
+    if count == 0:
+        c.executemany(
+            "INSERT INTO desks (name, location) VALUES (?, ?)",
+            [
+                ("Desk 1", "Office"),
+                ("Desk 2", "Office"),
+                ("Desk 3", "Office"),
+            ]
+        )
+        conn.commit()
+
     conn.close()
