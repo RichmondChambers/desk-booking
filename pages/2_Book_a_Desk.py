@@ -4,11 +4,14 @@ from utils.db import get_conn
 from utils.audit import log_action
 import json
 
+# =====================================================
+# PAGE TITLE
+# =====================================================
 st.title("Book a Desk")
 
-# -----------------------------------------------------
+# =====================================================
 # SESSION SAFETY
-# -----------------------------------------------------
+# =====================================================
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", None)
 st.session_state.setdefault("role", "user")
@@ -23,9 +26,9 @@ if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
-# -----------------------------------------------------
+# =====================================================
 # DATE PICKER
-# -----------------------------------------------------
+# =====================================================
 selected_date = st.date_input("Select date", format="DD/MM/YYYY")
 st.caption(f"Selected date: {selected_date.strftime('%d/%m/%Y')}")
 
@@ -39,14 +42,14 @@ if selected_date.weekday() >= 5:
 
 date_iso = selected_date.strftime("%Y-%m-%d")
 
-# -----------------------------------------------------
-# DESKS (FIXED TO 3 FOR NOW)
-# -----------------------------------------------------
+# =====================================================
+# DESKS (Desk 1 / Desk 2 / Desk 3)
+# =====================================================
 DESKS = [1, 2, 3]
 
-# -----------------------------------------------------
-# TIME SLOTS
-# -----------------------------------------------------
+# =====================================================
+# TIME SLOTS (09:00–18:00, 30 min)
+# =====================================================
 START = time(9, 0)
 END = time(18, 0)
 STEP = 30
@@ -65,9 +68,9 @@ SLOTS = generate_slots()
 def is_past(t):
     return selected_date == date.today() and datetime.combine(date.today(), t) < datetime.now()
 
-# -----------------------------------------------------
-# LOAD BOOKINGS
-# -----------------------------------------------------
+# =====================================================
+# LOAD EXISTING BOOKINGS
+# =====================================================
 conn = get_conn()
 rows = conn.execute(
     """
@@ -93,17 +96,17 @@ for desk_id, start, end, user_name, uid in rows:
             if uid == st.session_state.user_id:
                 mine.add(key)
 
-# -----------------------------------------------------
+# =====================================================
 # LEGEND
-# -----------------------------------------------------
+# =====================================================
 st.markdown("""
 **Legend**  
 ⬜ Available 🟦 Your booking 🟥 Booked ⬛ Past
 """)
 
-# -----------------------------------------------------
-# PAYLOAD
-# -----------------------------------------------------
+# =====================================================
+# JS PAYLOAD
+# =====================================================
 payload = {
     "desks": DESKS,
     "times": [t.strftime("%H:%M") for t in SLOTS],
@@ -120,16 +123,25 @@ payload = {
 
 payload_json = json.dumps(payload)
 
+# =====================================================
+# HTML GRID (HEADINGS + DRAG + SCROLL)
+# =====================================================
 result = st.components.v1.html(
 f"""
 <!DOCTYPE html>
 <html>
 <head>
 <style>
-body {{
+html, body {{
     margin: 0;
+    padding: 0;
     font-family: sans-serif;
     color: #e5e7eb;
+}}
+
+.container {{
+    max-height: 900px;
+    overflow-y: auto;
 }}
 
 .grid {{
@@ -142,6 +154,11 @@ body {{
 .header {{
     font-weight: 600;
     text-align: center;
+    position: sticky;
+    top: 0;
+    background: #020617;
+    padding: 6px 0;
+    z-index: 5;
 }}
 
 .time {{
@@ -186,7 +203,9 @@ body {{
 
 <body>
 
-<div class="grid" id="grid"></div>
+<div class="container">
+  <div class="grid" id="grid"></div>
+</div>
 
 <script>
 const data = {payload_json};
@@ -194,7 +213,10 @@ const grid = document.getElementById("grid");
 let selected = new Set(data.selected);
 let dragging = false;
 
-// ---- HEADER ROW ----
+document.addEventListener("mousedown", () => dragging = true);
+document.addEventListener("mouseup", () => dragging = false);
+
+// Header row
 grid.appendChild(document.createElement("div"));
 ["Desk 1","Desk 2","Desk 3"].forEach(h => {{
   const d = document.createElement("div");
@@ -203,7 +225,7 @@ grid.appendChild(document.createElement("div"));
   grid.appendChild(d);
 }});
 
-// ---- TIME ROWS ----
+// Time rows
 data.times.forEach(time => {{
   const t = document.createElement("div");
   t.className = "time";
@@ -226,16 +248,13 @@ data.times.forEach(time => {{
     if (selected.has(key)) cell.classList.add("selected");
 
     if (cell.classList.contains("available") || cell.classList.contains("selected")) {{
-      cell.onmousedown = () => toggle(key, cell);
-      cell.onmouseover = () => dragging && toggle(key, cell);
+      cell.addEventListener("mousedown", () => toggle(key, cell));
+      cell.addEventListener("mouseover", () => dragging && toggle(key, cell));
     }}
 
     grid.appendChild(cell);
   }});
 }});
-
-document.onmousedown = () => dragging = true;
-document.onmouseup = () => dragging = false;
 
 function toggle(key, cell) {{
   if (selected.has(key)) {{
@@ -252,33 +271,32 @@ function toggle(key, cell) {{
 </body>
 </html>
 """,
-height=760,
+height=950,
 )
 
-# -----------------------------------------------------
+# =====================================================
 # RECEIVE SELECTION
-# -----------------------------------------------------
+# =====================================================
 if isinstance(result, dict) and "selected" in result:
     st.session_state.selected_cells = result["selected"]
 
-# -----------------------------------------------------
-# BOOKING SUMMARY
-# -----------------------------------------------------
+# =====================================================
+# BOOKING SUMMARY + GROUPING
+# =====================================================
 if st.session_state.selected_cells:
     grouped = {}
+
     for k in st.session_state.selected_cells:
         d, t = k.split("_")
         grouped.setdefault(int(d), []).append(time.fromisoformat(t))
 
-    st.subheader("Booking summary")
+    st.subheader("Booking Summary")
 
     for desk, times in grouped.items():
         times.sort()
-        st.markdown(
-            f"**Desk {desk}** — "
-            f"{times[0].strftime('%H:%M')}–"
-            f"{(datetime.combine(date.today(), times[-1]) + timedelta(minutes=30)).time().strftime('%H:%M')}"
-        )
+        start = times[0]
+        end = (datetime.combine(date.today(), times[-1]) + timedelta(minutes=30)).time()
+        st.markdown(f"**Desk {desk}** — {start.strftime('%H:%M')}–{end.strftime('%H:%M')}")
 
     if st.button("Confirm Booking"):
         conn = get_conn()
@@ -300,7 +318,11 @@ if st.session_state.selected_cells:
         conn.commit()
         conn.close()
 
-        log_action("NEW_BOOKING", f"{len(grouped)} desk(s) booked on {date_iso}")
+        log_action(
+            action="NEW_BOOKING",
+            details=f"{len(grouped)} desk(s) booked on {date_iso}",
+        )
+
         st.session_state.selected_cells = []
         st.success("Booking confirmed.")
         st.rerun()
