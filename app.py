@@ -17,51 +17,19 @@ if (
     and "oauth_email" not in st.session_state
     and "oauth_state" in st.session_state
 ):
-
-    if "oauth_state" not in st.session_state:
-        st.error("OAuth state missing. Please click 'Sign in with Google' again.")
-        st.stop()
-
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": st.secrets["oauth"]["client_id"],
-                "client_secret": st.secrets["oauth"]["client_secret"],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
-            }
-        },
-        scopes=["openid", "email", "profile"],
-        state=st.session_state["oauth_state"],
-        redirect_uri=st.secrets["oauth"]["redirect_uri"],
-    )
-
-    flow.fetch_token(code=query_params["code"])
-    credentials = flow.credentials
-
-    userinfo = requests.get(
-        "https://openidconnect.googleapis.com/v1/userinfo",
-        headers={"Authorization": f"Bearer {credentials.token}"},
-        timeout=10,
-    ).json()
-
-    email = (userinfo.get("email") or "").lower()
-    name = userinfo.get("name") or email.split("@")[0]
-
-    if not email.endswith("@richmondchambers.com"):
-        st.error("Access restricted to Richmond Chambers staff.")
-        st.stop()
-
-    st.session_state["oauth_email"] = email
-    st.session_state["oauth_name"] = name
-
-    # cleanup
-    st.session_state.pop("oauth_state", None)
-    st.query_params.clear()
+    # ... your existing flow.fetch_token(...) logic ...
+    # ... set st.session_state["oauth_email"] / ["oauth_name"] ...
+    # ... clear query params ...
 
 # ---------------------------------------------------
-# REQUIRE LOGIN (shows sign-in link and stops if not logged in)
+# STEP 2: HANDLE EXPIRED SESSION (code present but no state)
+# ---------------------------------------------------
+if "code" in query_params and "oauth_state" not in st.session_state and "oauth_email" not in st.session_state:
+    st.error("Session expired. Please click 'Sign in with Google' again.")
+    st.stop()
+
+# ---------------------------------------------------
+# REQUIRE LOGIN
 # ---------------------------------------------------
 require_login()
 
