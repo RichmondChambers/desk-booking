@@ -120,11 +120,17 @@ if st.session_state.user_id is None:
 
     st.session_state.user_id = row[0]
     st.session_state.user_name = row[1]
-    st.session_state.role = row[2]
+
+    # IMPORTANT: never downgrade an admin in-session
+    if st.session_state.role != "admin":
+        st.session_state.role = row[2]
+
     st.session_state.can_book = row[3]
     st.session_state.user_email = email
 
+# ---------------------------------------------------
 # TEMPORARY BOOTSTRAP — REMOVE AFTER FIRST ADMIN IS SET
+# ---------------------------------------------------
 if st.session_state.user_email == "paul.richmond@richmondchambers.com":
     st.session_state.role = "admin"
     conn = get_conn()
