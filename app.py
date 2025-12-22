@@ -13,6 +13,17 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 query_params = st.query_params
 if "code" in query_params and "oauth_email" not in st.session_state:
 
+  # ---------------------------------------------------
+# HANDLE OAUTH CALLBACK
+# ---------------------------------------------------
+query_params = st.query_params
+
+if "code" in query_params and "oauth_email" not in st.session_state:
+
+    if "oauth_state" not in st.session_state:
+        st.error("OAuth state missing. Please try signing in again.")
+        st.stop()
+
     flow = Flow.from_client_config(
         {
             "web": {
@@ -24,10 +35,34 @@ if "code" in query_params and "oauth_email" not in st.session_state:
             }
         },
         scopes=["openid", "email", "profile"],
+        state=st.session_state["oauth_state"],
         redirect_uri=st.secrets["oauth"]["redirect_uri"],
     )
 
     flow.fetch_token(code=query_params["code"])
+
+    credentials = flow.credentials
+
+    import requests
+    userinfo = requests.get(
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        headers={"Authorization": f"Bearer {credentials.token}"},
+    ).json()
+
+    email = userinfo.get("email", "").lower()
+    name = userinfo.get("name")
+
+    if not email.endswith("@richmondchambers.com"):
+        st.error("Access restricted to Richmond Chambers staff.")
+        st.stop()
+
+    st.session_state["oauth_email"] = email
+    st.session_state["oauth_name"] = name
+
+    # cleanup
+    del st.session_state["oauth_state"]
+    st.query_params.clear()
+
     credentials = flow.credentials
 
     userinfo = requests.get(
