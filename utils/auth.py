@@ -19,10 +19,13 @@ def require_login():
         redirect_uri=st.secrets["oauth"]["redirect_uri"],
     )
 
-    auth_url, _ = flow.authorization_url(
+    auth_url, state = flow.authorization_url(
         prompt="consent",
         hd=st.secrets["oauth"]["allowed_domain"],
     )
+
+    # 🔐 persist state
+    st.session_state["oauth_state"] = state
 
     st.title("Desk Booking System")
     st.markdown("### Sign in required")
