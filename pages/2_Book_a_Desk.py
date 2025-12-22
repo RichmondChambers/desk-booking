@@ -62,7 +62,7 @@ DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # --------------------------------------------------
-# TIME SLOTS (09:00 → 18:00, SHOW 18:00)
+# TIME SLOTS (09:00 → 18:00, LAST SLOT 17:30)
 # --------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
@@ -72,7 +72,7 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur <= end_dt:  # <= so 18:00 is visible
+while cur < end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -98,7 +98,7 @@ rows = conn.execute(
 ).fetchall()
 conn.close()
 
-booked = {}   # key -> user name
+booked = {}
 mine = set()
 
 for desk_id, start, end, user_name, uid in rows:
@@ -137,7 +137,7 @@ st.markdown(
 )
 
 # --------------------------------------------------
-# GRID + INTERACTION
+# GRID
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -157,55 +157,24 @@ payload = {
 
 html = """
 <style>
-html, body { margin:0; padding:0; font-family:inherit; }
-* { box-sizing:border-box; font-family:inherit; }
-
 .grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
-.time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
-.header { font-weight:600; }
+.time,.header { color:#e5e7eb; text-align:center; }
 .cell { height:42px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); }
-.available { background:#ffffff; cursor:pointer; }
-.available:hover { outline:2px solid #009fdf; }
-.selected { background:#009fdf !important; }
+.available { background:#fff; cursor:pointer; }
+.selected { background:#009fdf!important; }
 .own { background:#009fdf; cursor:not-allowed; }
 .booked { background:#c0392b; cursor:not-allowed; }
 .past { background:#2c2c2c; cursor:not-allowed; }
-#info { margin-bottom:12px; padding:10px 14px; border-radius:10px;
-        background:rgba(255,255,255,0.08); color:#e5e7eb; min-height:38px; }
+#info { margin-bottom:12px; padding:10px; border-radius:10px; background:rgba(255,255,255,0.08); color:#e5e7eb; }
 </style>
 
 <div id="info">Hover over a slot to see details.</div>
 <div class="grid" id="grid"></div>
 
 <script>
-// -------- Font sync from Streamlit parent --------
-(function syncStreamlitFont() {
-  function apply() {
-    try {
-      const p = window.parent?.document?.body;
-      if (!p) return false;
-      const f = window.parent.getComputedStyle(p).fontFamily;
-      if (f) {
-        document.documentElement.style.fontFamily = f;
-        document.body.style.fontFamily = f;
-        return true;
-      }
-    } catch(e){}
-    return false;
-  }
-  if (apply()) return;
-  let i = 0;
-  const t = setInterval(() => {
-    if (apply() || ++i > 20) clearInterval(t);
-  }, 100);
-})();
-
 const data = %s;
 const grid = document.getElementById("grid");
 const info = document.getElementById("info");
-
-let selected = new Set(data.selected);
-let dragging = false;
 
 function statusForCell(key) {
   if (data.mine.includes(key)) return "Your booking";
@@ -221,18 +190,6 @@ function showInfo(deskId, timeStr, key) {
   info.innerText = text;
 }
 
-function toggle(key, el) {
-  if (!el.classList.contains("available")) return;
-  if (selected.has(key)) {
-    selected.delete(key);
-    el.classList.remove("selected");
-  } else {
-    selected.add(key);
-    el.classList.add("selected");
-  }
-}
-
-// Header
 grid.appendChild(document.createElement("div"));
 data.desks.forEach(d => {
   const h = document.createElement("div");
@@ -241,7 +198,6 @@ data.desks.forEach(d => {
   grid.appendChild(h);
 });
 
-// Rows
 data.times.forEach(timeStr => {
   const t = document.createElement("div");
   t.className = "time";
@@ -257,22 +213,10 @@ data.times.forEach(timeStr => {
     else if (data.past.includes(key)) c.className = "cell past";
     else c.className = "cell available";
 
-    if (selected.has(key)) c.classList.add("selected");
-
     c.onmouseenter = () => showInfo(deskId, timeStr, key);
-    c.onmousedown = () => {
-      showInfo(deskId, timeStr, key);
-      dragging = true;
-      toggle(key, c);
-    };
-    c.onmouseover = () => dragging && toggle(key, c);
-    c.onmouseup = () => dragging = false;
-
     grid.appendChild(c);
   });
 });
-
-document.onmouseup = () => dragging = false;
 </script>
 """ % (len(DESK_IDS), json.dumps(payload))
 
@@ -303,6 +247,7 @@ if st.session_state.selected_cells:
                     """,
                     (st.session_state.user_id, int(desk_id), date_iso, t, end),
                 )
+
             conn.commit()
         except Exception:
             conn.rollback()
