@@ -3,6 +3,7 @@ from datetime import datetime, date, time, timedelta
 from utils.db import get_conn
 from utils.audit import log_action
 import json
+import urllib.parse
 
 st.title("Book a Desk")
 
@@ -65,13 +66,12 @@ STEP = 30
 slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
-
 while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
 def make_initials(name: str) -> str:
-    parts = name.split()
+    parts = [p for p in name.split() if p]
     return "".join(p[0].upper() for p in parts[:2])
 
 def is_past(t: time) -> bool:
@@ -99,7 +99,6 @@ for desk_id, start, end, user_name, uid in rows:
     s = time.fromisoformat(start)
     e = time.fromisoformat(end)
     init = make_initials(user_name)
-
     for t in slots:
         if s <= t < e:
             key = f"{desk_id}_{t.strftime('%H:%M')}"
@@ -108,12 +107,48 @@ for desk_id, start, end, user_name, uid in rows:
                 mine.add(key)
 
 # --------------------------------------------------
+# HANDLE CONFIRMED BOOKINGS FROM QUERY PARAM
+# --------------------------------------------------
+params = st.query_params
+if "slots" in params:
+    selected = json.loads(urllib.parse.unquote(params["slots"]))
+
+    conn = get_conn()
+    cur = conn.cursor()
+    for key in selected:
+        desk_id, t = key.split("_")
+        end = (
+            datetime.combine(selected_date, time.fromisoformat(t))
+            + timedelta(minutes=30)
+        ).strftime("%H:%M")
+
+        cur.execute(
+            """
+            INSERT INTO bookings (user_id, desk_id, date, start_time, end_time, status)
+            VALUES (?, ?, ?, ?, ?, 'booked')
+            """,
+            (st.session_state.user_id, int(desk_id), date_iso, t, end),
+        )
+
+    conn.commit()
+    conn.close()
+
+    log_action(
+        action="NEW_BOOKING",
+        details=f"{len(selected)} slots on {date_iso}",
+    )
+
+    st.query_params.clear()
+    st.success("Booking confirmed.")
+    st.rerun()
+
+# --------------------------------------------------
 # INSTRUCTIONS
 # --------------------------------------------------
 st.markdown("Select one or more available slots, then confirm your booking.")
 
 # --------------------------------------------------
-# GRID (VISUAL SELECTION ONLY)
+# GRID (VISUAL SELECTION)
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -153,7 +188,7 @@ html, body { margin:0; padding:0; font-family:inherit; }
 .selected { background:#009fdf !important; }
 .own { background:#009fdf; cursor:not-allowed; }
 .booked { background:#c0392b; cursor:not-allowed; }
-.past { background:#2c2c2c; cursor:not-allowed; }
+.past { background:#2c2c2c; }
 
 .cell-label {
   font-size:13px;
@@ -174,11 +209,10 @@ html, body { margin:0; padding:0; font-family:inherit; }
 <div class="grid" id="grid"></div>
 
 <script>
-// font sync
 (function sync() {
   try {
-    const f = window.parent.getComputedStyle(window.parent.document.body).fontFamily;
-    document.body.style.fontFamily = f;
+    document.body.style.fontFamily =
+      window.parent.getComputedStyle(window.parent.document.body).fontFamily;
   } catch(e){}
 })();
 
@@ -193,10 +227,9 @@ function status(key) {
   if (data.mine.includes(key)) return "Booked · You";
   if (data.booked[key]) return "Booked · " + data.booked[key].name;
   if (data.past.includes(key)) return "Past";
-  return "Available (pending)";
+  return "Pending";
 }
 
-// header
 grid.appendChild(document.createElement("div"));
 data.desks.forEach(d => {
   const h = document.createElement("div");
@@ -205,7 +238,6 @@ data.desks.forEach(d => {
   grid.appendChild(h);
 });
 
-// rows
 data.times.forEach(t => {
   const tl = document.createElement("div");
   tl.className = "time";
@@ -257,20 +289,22 @@ data.times.forEach(t => {
 });
 
 document.onmouseup = () => dragging = false;
+
+window.confirmSelection = function () {
+  if (!selected.size) {
+    alert("Please select at least one slot.");
+    return;
+  }
+  const q = encodeURIComponent(JSON.stringify(Array.from(selected)));
+  window.location.search = "?slots=" + q;
+};
 </script>
 """ % (len(DESK_IDS), json.dumps(payload))
 
 st.components.v1.html(html, height=1200)
 
 # --------------------------------------------------
-# CONFIRM BOOKING
+# CONFIRM BOOKING BUTTON
 # --------------------------------------------------
-st.markdown("### Confirm booking")
-
 if st.button("Confirm booking"):
-    # NOTE: pending selection is visual only
-    st.warning(
-        "Please confirm: booking will apply to the slots you selected visually."
-    )
-    # At this point, booking logic can be wired once we decide
-    # how you want to translate pending selection into bookings
+    st.components.v1.html("<script>confirmSelection()</script>")
