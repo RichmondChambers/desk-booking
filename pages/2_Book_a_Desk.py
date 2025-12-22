@@ -4,14 +4,11 @@ from utils.db import get_conn
 from utils.audit import log_action
 import json
 
-# =====================================================
-# PAGE TITLE
-# =====================================================
 st.title("Book a Desk")
 
-# =====================================================
+# -----------------------------------------------------
 # SESSION SAFETY
-# =====================================================
+# -----------------------------------------------------
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", None)
 st.session_state.setdefault("role", "user")
@@ -26,11 +23,9 @@ if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
-is_admin = st.session_state.role == "admin"
-
-# =====================================================
+# -----------------------------------------------------
 # DATE PICKER
-# =====================================================
+# -----------------------------------------------------
 selected_date = st.date_input("Select date", format="DD/MM/YYYY")
 st.caption(f"Selected date: {selected_date.strftime('%d/%m/%Y')}")
 
@@ -44,25 +39,14 @@ if selected_date.weekday() >= 5:
 
 date_iso = selected_date.strftime("%Y-%m-%d")
 
-# =====================================================
-# LOAD DESKS
-# =====================================================
-conn = get_conn()
-desks = conn.execute(
-    """
-    SELECT id
-    FROM desks
-    WHERE is_active = 1
-    ORDER BY id
-    """
-).fetchall()
-conn.close()
+# -----------------------------------------------------
+# DESKS (FIXED TO 3 FOR NOW)
+# -----------------------------------------------------
+DESKS = [1, 2, 3]
 
-DESK_IDS = [d[0] for d in desks]
-
-# =====================================================
+# -----------------------------------------------------
 # TIME SLOTS
-# =====================================================
+# -----------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
 STEP = 30
@@ -81,9 +65,9 @@ SLOTS = generate_slots()
 def is_past(t):
     return selected_date == date.today() and datetime.combine(date.today(), t) < datetime.now()
 
-# =====================================================
+# -----------------------------------------------------
 # LOAD BOOKINGS
-# =====================================================
+# -----------------------------------------------------
 conn = get_conn()
 rows = conn.execute(
     """
@@ -104,56 +88,91 @@ for desk_id, start, end, user_name, uid in rows:
     e = time.fromisoformat(end)
     for slot in SLOTS:
         if s <= slot < e:
-            booked[(desk_id, slot)] = f"{user_name} ({start}–{end})"
+            key = f"{desk_id}_{slot.strftime('%H:%M')}"
+            booked[key] = f"{user_name} ({start}–{end})"
             if uid == st.session_state.user_id:
-                mine.add((desk_id, slot))
+                mine.add(key)
 
-# =====================================================
-# STYLES
-# =====================================================
+# -----------------------------------------------------
+# LEGEND
+# -----------------------------------------------------
 st.markdown("""
-<style>
-.header-row {
-    display: grid;
-    grid-template-columns: 90px repeat(3, 1fr);
-    margin: 20px 0 10px;
-    font-weight: 600;
-    text-align: center;
+**Legend**  
+⬜ Available 🟦 Your booking 🟥 Booked ⬛ Past
+""")
+
+# -----------------------------------------------------
+# PAYLOAD
+# -----------------------------------------------------
+payload = {
+    "desks": DESKS,
+    "times": [t.strftime("%H:%M") for t in SLOTS],
+    "selected": st.session_state.selected_cells,
+    "booked": booked,
+    "mine": list(mine),
+    "past": [
+        f"{d}_{t.strftime('%H:%M')}"
+        for d in DESKS
+        for t in SLOTS
+        if is_past(t)
+    ],
 }
 
-.grid {
+payload_json = json.dumps(payload)
+
+# -----------------------------------------------------
+# FULL HTML GRID (THIS IS THE KEY FIX)
+# -----------------------------------------------------
+result = st.components.v1.html(
+f"""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {{
+    margin: 0;
+    font-family: sans-serif;
+}}
+
+.header {{
+    display: grid;
+    grid-template-columns: 90px repeat(3, 1fr);
+    margin-bottom: 10px;
+    font-weight: 600;
+    text-align: center;
+}}
+
+.grid {{
     display: grid;
     grid-template-columns: 90px repeat(3, 1fr);
     gap: 10px;
-}
+}}
 
-.time {
-    font-weight: 600;
+.time {{
     padding-top: 6px;
-}
+    font-weight: 600;
+}}
 
-.cell {
+.cell {{
     height: 36px;
     border-radius: 8px;
     border: 1px solid #e5e7eb;
     cursor: pointer;
-    position: relative;
-}
+}}
 
-/* STATES */
-.available { background: #ffffff; }
-.available:hover { background: #f3f4f6; }
+.available {{ background: #ffffff; }}
+.available:hover {{ background: #f3f4f6; }}
 
 .selected,
-.own { background: #009fdf; }
+.own {{ background: #009fdf; }}
 
-.booked { background: #b91c1c; cursor: not-allowed; }
-.past { background: #1f2937; cursor: not-allowed; }
+.booked {{ background: #b91c1c; cursor: not-allowed; }}
+.past {{ background: #1f2937; cursor: not-allowed; }}
 
-.cell[data-tooltip]:hover::after {
+.cell[data-tooltip]:hover::after {{
     content: attr(data-tooltip);
     position: absolute;
-    bottom: 110%;
+    bottom: 120%;
     left: 50%;
     transform: translateX(-50%);
     background: #111827;
@@ -162,46 +181,19 @@ st.markdown("""
     font-size: 12px;
     border-radius: 6px;
     white-space: nowrap;
-}
+}}
 </style>
-""", unsafe_allow_html=True)
+</head>
 
-# =====================================================
-# LEGEND
-# =====================================================
-st.markdown("""
-**Legend**  
-⬜ Available 🟦 Your booking 🟥 Booked ⬛ Past
-""")
+<body>
 
-# =====================================================
-# HEADER
-# =====================================================
-header = "<div class='header-row'><div></div>"
-for d in DESK_IDS:
-    header += f"<div>Desk {d}</div>"
-header += "</div>"
-st.markdown(header, unsafe_allow_html=True)
+<div class="header">
+  <div></div>
+  <div>Desk 1</div>
+  <div>Desk 2</div>
+  <div>Desk 3</div>
+</div>
 
-# =====================================================
-# PAYLOAD
-# =====================================================
-payload = {
-    "desks": DESK_IDS,
-    "times": [t.strftime("%H:%M") for t in SLOTS],
-    "selected": st.session_state.selected_cells,
-    "booked": {f"{d}_{t.strftime('%H:%M')}": booked[(d,t)] for (d,t) in booked},
-    "mine": [f"{d}_{t.strftime('%H:%M')}" for (d,t) in mine],
-    "past": [f"{d}_{t.strftime('%H:%M')}" for d in DESK_IDS for t in SLOTS if is_past(t)],
-}
-
-payload_json = json.dumps(payload)
-
-# =====================================================
-# GRID HTML
-# =====================================================
-result = st.components.v1.html(
-    f"""
 <div class="grid" id="grid"></div>
 
 <script>
@@ -254,19 +246,22 @@ function toggle(key, cell) {{
   window.parent.postMessage({{selected:[...selected]}}, "*");
 }}
 </script>
+
+</body>
+</html>
 """,
-    height=720,
+height=760,
 )
 
-# =====================================================
+# -----------------------------------------------------
 # RECEIVE SELECTION
-# =====================================================
+# -----------------------------------------------------
 if isinstance(result, dict) and "selected" in result:
     st.session_state.selected_cells = result["selected"]
 
-# =====================================================
-# BOOKING SUMMARY + CONFIRM
-# =====================================================
+# -----------------------------------------------------
+# BOOKING SUMMARY
+# -----------------------------------------------------
 if st.session_state.selected_cells:
     grouped = {}
     for k in st.session_state.selected_cells:
@@ -278,7 +273,8 @@ if st.session_state.selected_cells:
     for desk, times in grouped.items():
         times.sort()
         st.markdown(
-            f"**Desk {desk}** — {times[0].strftime('%H:%M')}–"
+            f"**Desk {desk}** — "
+            f"{times[0].strftime('%H:%M')}–"
             f"{(datetime.combine(date.today(), times[-1]) + timedelta(minutes=30)).time().strftime('%H:%M')}"
         )
 
