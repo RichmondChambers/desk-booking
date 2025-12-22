@@ -38,6 +38,27 @@ if selected_date.weekday() >= 5:
 date_iso = selected_date.strftime("%Y-%m-%d")
 
 # --------------------------------------------------
+# TIME SLOTS
+# --------------------------------------------------
+START = time(9, 0)
+END = time(18, 0)
+STEP = 30
+
+slots = []
+cur = datetime.combine(selected_date, START)
+end_dt = datetime.combine(selected_date, END)
+while cur <= end_dt:
+    slots.append(cur.time())
+    cur += timedelta(minutes=STEP)
+
+def is_past(t: time) -> bool:
+    return selected_date == date.today() and datetime.combine(selected_date, t) < datetime.now()
+
+def initials(name: str) -> str:
+    parts = [p for p in name.split() if p]
+    return "".join(p[0].upper() for p in parts[:2])
+
+# --------------------------------------------------
 # LOAD DESKS
 # --------------------------------------------------
 conn = get_conn()
@@ -55,27 +76,6 @@ conn.close()
 
 DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
-
-# --------------------------------------------------
-# TIME SLOTS
-# --------------------------------------------------
-START = time(9, 0)
-END = time(18, 0)
-STEP = 30
-
-slots = []
-cur = datetime.combine(selected_date, START)
-end_dt = datetime.combine(selected_date, END)
-while cur <= end_dt:
-    slots.append(cur.time())
-    cur += timedelta(minutes=STEP)
-
-def make_initials(name: str) -> str:
-    parts = [p for p in name.split() if p]
-    return "".join(p[0].upper() for p in parts[:2])
-
-def is_past(t: time) -> bool:
-    return selected_date == date.today() and datetime.combine(selected_date, t) < datetime.now()
 
 # --------------------------------------------------
 # LOAD BOOKINGS
@@ -98,7 +98,8 @@ mine = set()
 for desk_id, start, end, user_name, uid in rows:
     s = time.fromisoformat(start)
     e = time.fromisoformat(end)
-    init = make_initials(user_name)
+    init = initials(user_name)
+
     for t in slots:
         if s <= t < e:
             key = f"{desk_id}_{t.strftime('%H:%M')}"
@@ -107,7 +108,7 @@ for desk_id, start, end, user_name, uid in rows:
                 mine.add(key)
 
 # --------------------------------------------------
-# HANDLE CONFIRMED BOOKINGS FROM QUERY PARAM
+# HANDLE CONFIRMED BOOKINGS
 # --------------------------------------------------
 params = st.query_params
 if "slots" in params:
@@ -115,6 +116,7 @@ if "slots" in params:
 
     conn = get_conn()
     cur = conn.cursor()
+
     for key in selected:
         desk_id, t = key.split("_")
         end = (
@@ -139,16 +141,11 @@ if "slots" in params:
     )
 
     st.query_params.clear()
-    st.success("Booking confirmed.")
+    st.success("Desk booked.")
     st.rerun()
 
 # --------------------------------------------------
-# INSTRUCTIONS
-# --------------------------------------------------
-st.markdown("Select one or more available slots, then confirm your booking.")
-
-# --------------------------------------------------
-# GRID (VISUAL SELECTION)
+# GRID
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -186,8 +183,8 @@ html, body { margin:0; padding:0; font-family:inherit; }
 .available { background:#ffffff; cursor:pointer; }
 .available:hover { outline:2px solid #009fdf; }
 .selected { background:#009fdf !important; }
-.own { background:#009fdf; cursor:not-allowed; }
-.booked { background:#c0392b; cursor:not-allowed; }
+.own { background:#009fdf; }
+.booked { background:#c0392b; }
 .past { background:#2c2c2c; }
 
 .cell-label {
@@ -208,6 +205,15 @@ html, body { margin:0; padding:0; font-family:inherit; }
 <div id="info">Hover over a slot to see details.</div>
 <div class="grid" id="grid"></div>
 
+<div style="margin-top:16px;">
+  <button id="confirmBtn"
+    style="padding:8px 16px;border-radius:8px;border:none;
+           background:#009fdf;color:white;font-weight:600;cursor:pointer;">
+    Confirm booking
+  </button>
+  <span id="msg" style="margin-left:12px;color:#22c55e;font-weight:600;"></span>
+</div>
+
 <script>
 (function sync() {
   try {
@@ -219,6 +225,7 @@ html, body { margin:0; padding:0; font-family:inherit; }
 const data = %s;
 const grid = document.getElementById("grid");
 const info = document.getElementById("info");
+const msg  = document.getElementById("msg");
 
 let selected = new Set();
 let dragging = false;
@@ -230,6 +237,7 @@ function status(key) {
   return "Pending";
 }
 
+// Header
 grid.appendChild(document.createElement("div"));
 data.desks.forEach(d => {
   const h = document.createElement("div");
@@ -238,6 +246,7 @@ data.desks.forEach(d => {
   grid.appendChild(h);
 });
 
+// Rows
 data.times.forEach(t => {
   const tl = document.createElement("div");
   tl.className = "time";
@@ -290,21 +299,16 @@ data.times.forEach(t => {
 
 document.onmouseup = () => dragging = false;
 
-window.confirmSelection = function () {
+document.getElementById("confirmBtn").onclick = () => {
   if (!selected.size) {
     alert("Please select at least one slot.");
     return;
   }
+  msg.innerText = "Desk booked";
   const q = encodeURIComponent(JSON.stringify(Array.from(selected)));
   window.location.search = "?slots=" + q;
 };
 </script>
 """ % (len(DESK_IDS), json.dumps(payload))
 
-st.components.v1.html(html, height=1200)
-
-# --------------------------------------------------
-# CONFIRM BOOKING BUTTON
-# --------------------------------------------------
-if st.button("Confirm booking"):
-    st.components.v1.html("<script>confirmSelection()</script>")
+st.components.v1.html(html, height=1300)
