@@ -151,6 +151,20 @@ if st.session_state.user_id is None:
     st.session_state.user_email = email
 
 # ---------------------------------------------------
+# ONE-TIME ADMIN BOOTSTRAP (REMOVE AFTER CONFIRMING)
+# ---------------------------------------------------
+if st.session_state.user_email == "paul.richmond@richmondchambers.com":
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET role='admin' WHERE email=?",
+        (st.session_state.user_email,),
+    )
+    conn.commit()
+    conn.close()
+
+    st.session_state.role = "admin"
+
+# ---------------------------------------------------
 # SIDEBAR
 # ---------------------------------------------------
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
