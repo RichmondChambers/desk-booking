@@ -24,7 +24,11 @@ if "code" in query_params and "oauth_email" not in st.session_state:
                 "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
             }
         },
-        scopes=["openid", "email", "profile"],
+        scopes=[
+            "openid",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
+        ],
         redirect_uri=st.secrets["oauth"]["redirect_uri"],
     )
 
@@ -47,17 +51,6 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     st.session_state["oauth_email"] = email
     st.session_state["oauth_name"] = name
     st.query_params.clear()
-
-# ---------------------------------------------------
-# HANDLE EXPIRED / INVALID SESSION
-# ---------------------------------------------------
-if (
-    "code" in query_params
-    and "oauth_email" not in st.session_state
-    and "oauth_state" not in st.session_state
-):
-    st.error("Session expired. Please click 'Sign in with Google' again.")
-    st.stop()
 
 # ---------------------------------------------------
 # REQUIRE LOGIN (do NOT run during OAuth callback)
