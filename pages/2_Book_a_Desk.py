@@ -40,7 +40,7 @@ if selected_date.weekday() >= 5:
 date_iso = selected_date.strftime("%Y-%m-%d")
 
 # =====================================================
-# LOAD DESKS FROM DB (ADMIN CONTROLLED)
+# LOAD DESKS (ADMIN CONTROLLED)
 # =====================================================
 conn = get_conn()
 desks = conn.execute(
@@ -63,7 +63,7 @@ DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # =====================================================
-# TIME SLOTS (09:00–17:30 bookable + 18:00 label)
+# TIME SLOTS (09:00–18:00, 30 MIN)
 # =====================================================
 START = time(9, 0)
 END = time(18, 0)
@@ -73,10 +73,9 @@ def generate_slots():
     slots = []
     cur = datetime.combine(date.today(), START)
     end = datetime.combine(date.today(), END)
-    while cur < end:
+    while cur <= end:
         slots.append(cur.time())
         cur += timedelta(minutes=STEP)
-    slots.append(time(18, 0))  # visual end row
     return slots
 
 SLOTS = generate_slots()
@@ -85,7 +84,7 @@ def is_past(t):
     return selected_date == date.today() and datetime.combine(date.today(), t) < datetime.now()
 
 # =====================================================
-# LOAD EXISTING BOOKINGS
+# LOAD BOOKINGS
 # =====================================================
 conn = get_conn()
 rows = conn.execute(
@@ -121,7 +120,7 @@ st.markdown("""
 """)
 
 # =====================================================
-# COMPONENT PAYLOAD
+# PAYLOAD
 # =====================================================
 payload = {
     "desks": DESK_IDS,
@@ -141,23 +140,19 @@ payload = {
 payload_json = json.dumps(payload)
 
 # =====================================================
-# HTML GRID (STREAMLIT-CORRECT)
+# HTML GRID (NO INTERNAL SCROLL, CLICK FIXED)
 # =====================================================
 result = st.components.v1.html(
 f"""
 <!DOCTYPE html>
 <html>
 <head>
+<script src="https://cdn.jsdelivr.net/npm/@streamlit/component-lib"></script>
 <style>
 body {{
   margin: 0;
   font-family: sans-serif;
   color: #e5e7eb;
-}}
-
-.container {{
-  max-height: 900px;
-  overflow-y: auto;
 }}
 
 .grid {{
@@ -170,11 +165,7 @@ body {{
 .header {{
   font-weight: 600;
   text-align: center;
-  position: sticky;
-  top: 0;
-  background: #020617;
   padding: 6px 0;
-  z-index: 5;
 }}
 
 .time {{
@@ -217,9 +208,8 @@ body {{
 </head>
 
 <body>
-<div class="container">
-  <div class="grid" id="grid"></div>
-</div>
+
+<div class="grid" id="grid"></div>
 
 <script>
 const data = {payload_json};
@@ -281,10 +271,11 @@ function toggle(key, cell) {{
   Streamlit.setComponentValue({{selected:[...selected]}});
 }}
 </script>
+
 </body>
 </html>
 """,
-height=950,
+height=1000,
 )
 
 # =====================================================
