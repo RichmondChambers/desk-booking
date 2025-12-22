@@ -29,7 +29,6 @@ is_admin = st.session_state.role == "admin"
 # DATE PICKER
 # --------------------------------------------------
 selected_date = st.date_input("Select date", format="DD/MM/YYYY")
-st.caption(f"Selected date: {selected_date.strftime('%d/%m/%Y')}")
 
 if selected_date < date.today():
     st.error("Cannot book past dates.")
