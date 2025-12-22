@@ -2,7 +2,6 @@ import streamlit as st
 from datetime import datetime
 from utils.db import get_conn
 from utils.audit import audit_log
-from utils.qr import generate_qr
 
 
 # ---------------------------------------------------
@@ -16,14 +15,9 @@ st.title("Book a Desk")
 # ---------------------------------------------------
 # Pages must not assume app.py has already run
 
-if "can_book" not in st.session_state:
-    st.session_state.can_book = 1  # default allow
-
-if "user_id" not in st.session_state:
-    st.session_state.user_id = None
-
-if "user_email" not in st.session_state:
-    st.session_state.user_email = "internal.user@richmondchambers.com"
+st.session_state.setdefault("can_book", 1)
+st.session_state.setdefault("user_id", None)
+st.session_state.setdefault("user_email", "internal.user@richmondchambers.com")
 
 
 # ---------------------------------------------------
@@ -118,13 +112,6 @@ if st.button("Confirm Booking"):
     )
 
     st.success("Booking confirmed!")
-
-try:
-    qr_img = generate_qr(qr_url)
-    st.image(qr_img, caption="Scan to Check In")
-except Exception as e:
-    st.error("QR code could not be generated.")
-    st.exception(e)  # <-- this will show the real stack trace
 
 
 # ---------------------------------------------------
