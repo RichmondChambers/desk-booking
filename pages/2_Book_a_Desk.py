@@ -1,8 +1,7 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, date
 from utils.db import get_conn
 from utils.audit import audit_log
-from utils.dates import uk_date
 
 
 # ---------------------------------------------------
@@ -26,6 +25,20 @@ if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
+if st.session_state.user_id is None:
+    st.error("User session not initialised. Please reload the app.")
+    st.stop()
+
+
+# ---------------------------------------------------
+# DATE PARSING (UK FORMAT)
+# ---------------------------------------------------
+def parse_uk_date(value: str) -> date | None:
+    try:
+        return datetime.strptime(value.strip(), "%d/%m/%Y").date()
+    except Exception:
+        return None
+
 
 # ---------------------------------------------------
 # DATABASE CONNECTION
@@ -37,8 +50,27 @@ c = conn.cursor()
 # ---------------------------------------------------
 # USER INPUTS
 # ---------------------------------------------------
-date_choice = st.date_input("Select date")
-st.caption(f"Selected date: {uk_date(date_choice)}")
+default_uk_date = date.today().strftime("%d/%m/%Y")
+
+date_str = st.text_input(
+    "Select date (DD/MM/YYYY)",
+    value=default_uk_date,
+    help="Enter the date in UK format, e.g. 25/12/2025",
+)
+
+date_choice = parse_uk_date(date_str)
+
+if date_choice is None:
+    st.error("Please enter a valid date in DD/MM/YYYY format.")
+    conn.close()
+    st.stop()
+
+if date_choice < date.today():
+    st.error("Bookings cannot be made for past dates.")
+    conn.close()
+    st.stop()
+
+st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
 
 start_time = st.time_input("Start time")
 end_time = st.time_input("End time")
@@ -64,12 +96,14 @@ if st.button("Check Availability"):
         """
         SELECT 1
         FROM bookings
-        WHERE desk_id=? AND date=? AND status='booked'
-        AND (
-            (? BETWEEN start_time AND end_time)
-            OR
-            (? BETWEEN start_time AND end_time)
-        )
+        WHERE desk_id = ?
+          AND date = ?
+          AND status = 'booked'
+          AND (
+              (? BETWEEN start_time AND end_time)
+              OR
+              (? BETWEEN start_time AND end_time)
+          )
         """,
         (
             desk_id,
@@ -109,7 +143,7 @@ if st.button("Confirm Booking"):
     audit_log(
         st.session_state.user_email,
         "NEW_BOOKING",
-        f"desk={desk_id} {start_time}-{end_time} on {uk_date(date_choice)}",
+        f"desk={desk_id} {start_time}-{end_time} on {date_choice.strftime('%d/%m/%Y')}",
     )
 
     st.success("Booking confirmed!")
