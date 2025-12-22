@@ -65,7 +65,7 @@ DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # --------------------------------------------------
-# TIME SLOTS 09:00–18:00 (30 mins)
+# TIME SLOTS (09:00 → 18:00 INCLUSIVE)
 # --------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
@@ -73,7 +73,8 @@ STEP = 30
 
 slots = []
 cur = datetime.combine(date.today(), START)
-while cur <= datetime.combine(date.today(), END):
+end_dt = datetime.combine(date.today(), END)
+while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -111,11 +112,11 @@ for desk_id, start, end, user_name, uid in rows:
                 mine.add(key)
 
 # --------------------------------------------------
-# LEGEND
+# INLINE LEGEND
 # --------------------------------------------------
 st.markdown("""
-<div style="display:flex; gap:20px; margin-bottom:10px;">
-  <div>⬜ Available</div>
+<div style="display:flex; gap:24px; margin-bottom:12px; font-size:14px;">
+  <div style="color:#fff;">⬜ Available</div>
   <div style="color:#009fdf;">■ Your booking</div>
   <div style="color:#c0392b;">■ Booked</div>
   <div style="color:#555;">■ Past</div>
@@ -123,7 +124,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------
-# GRID HTML + JS (CRITICAL)
+# GRID HTML + JS (FULLY INTERACTIVE)
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -144,21 +145,54 @@ html = f"""
 <style>
 .grid {{
   display: grid;
-  grid-template-columns: 80px repeat({len(DESK_IDS)}, 1fr);
-  gap: 10px;
+  grid-template-columns: 90px repeat({len(DESK_IDS)}, 1fr);
+  gap: 12px;
 }}
-.time {{ font-weight: 600; }}
+
+.time {{
+  color: #e5e7eb;
+  font-weight: 600;
+}}
+
+.header {{
+  color: #e5e7eb;
+  font-weight: 700;
+  text-align: center;
+}}
+
 .cell {{
   height: 42px;
   border-radius: 10px;
-  border: 1px solid #ccc;
+  border: 1px solid rgba(255,255,255,0.25);
+}}
+
+.available {{
+  background: #ffffff;
   cursor: pointer;
 }}
-.available {{ background: white; }}
-.own {{ background: #009fdf; cursor: not-allowed; }}
-.booked {{ background: #c0392b; cursor: not-allowed; }}
-.past {{ background: #2c2c2c; cursor: not-allowed; }}
-.selected {{ outline: 3px solid #009fdf; }}
+
+.available:hover {{
+  outline: 2px solid #009fdf;
+}}
+
+.selected {{
+  background: #009fdf !important;
+}}
+
+.own {{
+  background: #009fdf;
+  cursor: not-allowed;
+}}
+
+.booked {{
+  background: #c0392b;
+  cursor: not-allowed;
+}}
+
+.past {{
+  background: #2c2c2c;
+  cursor: not-allowed;
+}}
 </style>
 
 <div class="grid" id="grid"></div>
@@ -166,6 +200,7 @@ html = f"""
 <script>
 const data = {json.dumps(payload)};
 const grid = document.getElementById("grid");
+
 let selected = new Set(data.selected);
 let dragging = false;
 
@@ -173,12 +208,12 @@ let dragging = false;
 grid.appendChild(document.createElement("div"));
 data.desks.forEach(d => {{
   const h = document.createElement("div");
+  h.className = "header";
   h.innerText = data.deskNames[d];
-  h.style.fontWeight = "700";
   grid.appendChild(h);
 }});
 
-// Rows
+// Build rows
 data.times.forEach(time => {{
   const t = document.createElement("div");
   t.className = "time";
@@ -229,7 +264,7 @@ function toggle(key, el) {{
 </script>
 """
 
-result = st.components.v1.html(html, height=900)
+result = st.components.v1.html(html, height=1000)
 
 # --------------------------------------------------
 # RECEIVE SELECTION
@@ -250,7 +285,10 @@ if st.session_state.selected_cells:
 
         for key in st.session_state.selected_cells:
             desk_id, t = key.split("_")
-            end = (datetime.combine(date.today(), time.fromisoformat(t)) + timedelta(minutes=30)).strftime("%H:%M")
+            end = (
+                datetime.combine(date.today(), time.fromisoformat(t))
+                + timedelta(minutes=30)
+            ).strftime("%H:%M")
 
             c.execute(
                 """
