@@ -65,7 +65,7 @@ date_iso = date_choice.strftime("%Y-%m-%d")
 
 
 # ===================================================
-# TIME GRID CONFIG
+# TIME GRID CONFIG (09:00–18:00 EXACT)
 # ===================================================
 START_HOUR = 9
 END_HOUR = 18
@@ -74,14 +74,15 @@ DESKS = range(1, 16)
 
 def generate_slots():
     slots = []
-    current = time(START_HOUR, 0)
-    while current < time(END_HOUR, 0):
-        end = (
-            datetime.combine(date.today(), current)
-            + timedelta(minutes=SLOT_MINUTES)
-        ).time()
-        slots.append((current, end))
-        current = end
+    current = datetime.combine(date.today(), time(START_HOUR, 0))
+    end_of_day = datetime.combine(date.today(), time(END_HOUR, 0))
+
+    while current < end_of_day:
+        nxt = current + timedelta(minutes=SLOT_MINUTES)
+        if nxt <= end_of_day:
+            slots.append((current.time(), nxt.time()))
+        current = nxt
+
     return slots
 
 SLOTS = generate_slots()
@@ -116,15 +117,12 @@ for desk, start, end, name, uid in rows:
 
 
 # ===================================================
-# GRID UI
+# HELPERS
 # ===================================================
-st.subheader("Select desk and time range")
-
-# Header
-header = st.columns([1] + [1] * len(DESKS))
-header[0].markdown("**Time**")
-for i, d in enumerate(DESKS):
-    header[i + 1].markdown(f"**Desk {d}**")
+def is_past_slot(slot_time: time) -> bool:
+    if date_choice != date.today():
+        return False
+    return datetime.combine(date.today(), slot_time) < datetime.now()
 
 def in_selected_range(desk, slot):
     if (
@@ -139,6 +137,39 @@ def in_selected_range(desk, slot):
     return start <= slot <= end
 
 
+# ===================================================
+# CSS STYLES
+# ===================================================
+st.markdown(
+    """
+    <style>
+    .cell {
+        height: 34px;
+        border-radius: 6px;
+        border: 1px solid #444;
+        cursor: pointer;
+    }
+    .available { background-color: #1e3a2f; }
+    .booked { background-color: #4a1f1f; cursor: not-allowed; }
+    .own { background-color: #1f3a4a; }
+    .selected { background-color: #2563eb; }
+    .past { background-color: #2a2a2a; cursor: not-allowed; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ===================================================
+# GRID UI
+# ===================================================
+st.subheader("Select desk and time range")
+
+header = st.columns([1] + [1] * len(DESKS))
+header[0].markdown("**Time**")
+for i, d in enumerate(DESKS):
+    header[i + 1].markdown(f"**Desk {d}**")
+
 for slot_start, slot_end in SLOTS:
     row = st.columns([1] + [1] * len(DESKS))
     row[0].markdown(slot_start.strftime("%H:%M"))
@@ -148,25 +179,26 @@ for slot_start, slot_end in SLOTS:
         booked_info = booked.get(key)
         is_own = key in own
         selected = in_selected_range(desk, slot_start)
+        past = is_past_slot(slot_start)
 
-        # IMPORTANT: disabled MUST be boolean
         disabled = (
-            (booked_info is not None)
-            and (not is_admin)
-            and (not is_own)
+            past
+            or ((booked_info is not None) and not is_admin and not is_own)
         )
 
         if selected:
-            symbol = "🟦"
+            css = "cell selected"
         elif is_own:
-            symbol = "🟩"
+            css = "cell own"
         elif booked_info:
-            symbol = "🟥"
+            css = "cell booked"
+        elif past:
+            css = "cell past"
         else:
-            symbol = "⬜"
+            css = "cell available"
 
         if row[i + 1].button(
-            symbol,
+            " ",
             key=f"{desk}_{slot_start}",
             help=booked_info or "Available",
             disabled=disabled,
@@ -180,6 +212,11 @@ for slot_start, slot_end in SLOTS:
                     st.session_state.selection_end = slot_start
                 else:
                     st.session_state.selection_end = slot_start
+
+        row[i + 1].markdown(
+            f"<div class='{css}'></div>",
+            unsafe_allow_html=True,
+        )
 
 
 # ===================================================
