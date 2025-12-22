@@ -119,12 +119,6 @@ if st.button("Confirm Booking"):
 
     st.success("Booking confirmed!")
 
-app_url = st.secrets.get("app_url")
-st.write("DEBUG app_url:", app_url)  # remove after fixing
-
-qr_url = f"{app_url}?checkin={desk_id}"
-st.write("DEBUG qr_url:", qr_url)    # remove after fixing
-
 try:
     qr_img = generate_qr(qr_url)
     st.image(qr_img, caption="Scan to Check In")
