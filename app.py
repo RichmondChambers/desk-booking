@@ -3,15 +3,22 @@ import requests
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
-from utils.db import init_db, get_conn
+from utils.db import init_db, seed_desks, make_admin, get_conn
 
+# ---------------------------------------------------
+# STREAMLIT CONFIG
+# ---------------------------------------------------
 st.set_page_config(page_title="Desk Booking", layout="wide")
 
-from utils.db import init_db, seed_desks
-
+# ---------------------------------------------------
+# INITIALISE DATABASE + SEED DATA
+# ---------------------------------------------------
 init_db()
 seed_desks()
 
+# 🔑 TEMPORARY: PROMOTE YOURSELF TO ADMIN
+# Replace with your real Richmond Chambers email
+make_admin("paul.richmond@richmondchambers.com")
 
 # ---------------------------------------------------
 # LOGOUT FUNCTION
@@ -77,15 +84,10 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     st.query_params.clear()
 
 # ---------------------------------------------------
-# REQUIRE LOGIN (do NOT run during OAuth callback)
+# REQUIRE LOGIN (DO NOT RUN DURING OAUTH CALLBACK)
 # ---------------------------------------------------
 if "code" not in st.query_params:
     require_login()
-
-# ---------------------------------------------------
-# INITIALISE DATABASE
-# ---------------------------------------------------
-init_db()
 
 # ---------------------------------------------------
 # INITIALISE SESSION DEFAULTS
@@ -110,12 +112,12 @@ if st.session_state.user_id is None:
         """
         SELECT id, name, role, can_book, is_active
         FROM users
-        WHERE email=?
+        WHERE email = ?
         """,
         (email,),
     ).fetchone()
 
-    # First login → create user
+    # FIRST LOGIN → CREATE USER
     if not row:
         c.execute(
             """
@@ -130,12 +132,12 @@ if st.session_state.user_id is None:
             """
             SELECT id, name, role, can_book, is_active
             FROM users
-            WHERE email=?
+            WHERE email = ?
             """,
             (email,),
         ).fetchone()
 
-    # ---- BLOCK DEACTIVATED USERS ----
+    # BLOCK DEACTIVATED USERS
     if row[4] == 0:
         conn.close()
         st.error(
@@ -148,13 +150,12 @@ if st.session_state.user_id is None:
 
     st.session_state.user_id = row[0]
     st.session_state.user_name = row[1]
+    st.session_state.user_email = email
+    st.session_state.can_book = row[3]
 
-    # IMPORTANT: never downgrade an admin in-session
+    # IMPORTANT: NEVER DOWNGRADE ADMIN ROLE IN-SESSION
     if st.session_state.role != "admin":
         st.session_state.role = row[2]
-
-    st.session_state.can_book = row[3]
-    st.session_state.user_email = email
 
 # ---------------------------------------------------
 # SIDEBAR
