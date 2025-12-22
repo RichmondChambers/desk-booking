@@ -10,7 +10,6 @@ st.title("Book a Desk")
 # SESSION SAFETY
 # --------------------------------------------------
 st.session_state.setdefault("user_id", None)
-st.session_state.setdefault("user_email", None)
 st.session_state.setdefault("role", "user")
 st.session_state.setdefault("can_book", 1)
 st.session_state.setdefault("selected_cells", [])
@@ -67,13 +66,17 @@ STEP = 30
 slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
+
 while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
 def make_initials(name: str) -> str:
-    parts = name.split()
+    parts = [p for p in name.split() if p]
     return "".join(p[0].upper() for p in parts[:2])
+
+def is_past(t: time) -> bool:
+    return selected_date == date.today() and datetime.combine(selected_date, t) < datetime.now()
 
 # --------------------------------------------------
 # LOAD BOOKINGS
@@ -96,13 +99,20 @@ mine = set()
 for desk_id, start, end, user_name, uid in rows:
     s = time.fromisoformat(start)
     e = time.fromisoformat(end)
-    init = make_initials(user_name)
+    initials = make_initials(user_name)
     for t in slots:
         if s <= t < e:
             key = f"{desk_id}_{t.strftime('%H:%M')}"
-            booked[key] = {"name": user_name, "initials": init}
+            booked[key] = {"name": user_name, "initials": initials}
             if uid == st.session_state.user_id:
                 mine.add(key)
+
+# --------------------------------------------------
+# INSTRUCTIONS
+# --------------------------------------------------
+st.markdown(
+    "Select one or more available slots below, then confirm your booking."
+)
 
 # --------------------------------------------------
 # GRID
@@ -114,55 +124,134 @@ payload = {
     "selected": st.session_state.selected_cells,
     "booked": booked,
     "mine": list(mine),
+    "past": [
+        f"{d}_{t.strftime('%H:%M')}"
+        for d in DESK_IDS
+        for t in slots
+        if is_past(t)
+    ],
     "dateLabel": selected_date.strftime("%d/%m/%Y"),
 }
 
 html = """
-<div id="grid"></div>
+<style>
+html, body { margin:0; padding:0; font-family:inherit; }
+* { box-sizing:border-box; font-family:inherit; }
 
-<script>
-const data = %s;
-let selected = new Set(data.selected);
+.grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
+.time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
+.header { font-weight:600; }
 
-function sendSelection() {
-  window.parent.postMessage(
-    { type: "streamlit:setComponentValue", value: Array.from(selected) },
-    "*"
-  );
+.cell {
+  height:42px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.25);
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
-data.times.forEach(time => {
-  data.desks.forEach(desk => {
-    const key = desk + "_" + time;
-    const div = document.createElement("div");
-    div.innerText = key;
-    div.style.padding = "6px";
-    div.style.margin = "2px";
-    div.style.border = "1px solid #ccc";
-    div.onclick = () => {
-      if (selected.has(key)) selected.delete(key);
-      else selected.add(key);
-      sendSelection();
+.available { background:#ffffff; cursor:pointer; }
+.available:hover { outline:2px solid #009fdf; }
+.selected { background:#009fdf !important; }
+.own { background:#009fdf; }
+.booked { background:#c0392b; }
+.past { background:#2c2c2c; }
+
+.cell-label {
+  font-size:13px;
+  font-weight:600;
+  color:#ffffff;
+}
+
+#info {
+  margin-bottom:12px;
+  padding:10px 14px;
+  border-radius:10px;
+  background:rgba(255,255,255,0.08);
+  color:#e5e7eb;
+}
+</style>
+
+<div id="info">Hover over a slot to see details.</div>
+<div class="grid" id="grid"></div>
+
+<script>
+// font sync
+(function sync() {
+  try {
+    const f = window.parent.getComputedStyle(window.parent.document.body).fontFamily;
+    document.body.style.fontFamily = f;
+  } catch(e){}
+})();
+
+const data = %s;
+const grid = document.getElementById("grid");
+const info = document.getElementById("info");
+
+function status(key) {
+  if (data.mine.includes(key)) return "Booked · You";
+  if (data.booked[key]) return "Booked · " + data.booked[key].name;
+  if (data.past.includes(key)) return "Past";
+  return "Available";
+}
+
+grid.appendChild(document.createElement("div"));
+data.desks.forEach(d => {
+  const h = document.createElement("div");
+  h.className = "header";
+  h.innerText = data.deskNames[d];
+  grid.appendChild(h);
+});
+
+data.times.forEach(t => {
+  const tl = document.createElement("div");
+  tl.className = "time";
+  tl.innerText = t;
+  grid.appendChild(tl);
+
+  data.desks.forEach(d => {
+    const key = d + "_" + t;
+    const c = document.createElement("div");
+
+    if (data.mine.includes(key)) c.className = "cell own";
+    else if (data.booked[key]) c.className = "cell booked";
+    else if (data.past.includes(key)) c.className = "cell past";
+    else c.className = "cell available";
+
+    if (data.selected.includes(key)) c.classList.add("selected");
+
+    if (data.booked[key]) {
+      const l = document.createElement("div");
+      l.className = "cell-label";
+      l.innerText = data.booked[key].initials;
+      c.appendChild(l);
+    }
+
+    c.onmouseenter = () => {
+      info.innerText =
+        `${data.dateLabel} · ${data.deskNames[d]} · ${t} · ${status(key)}`;
     };
-    document.getElementById("grid").appendChild(div);
+
+    grid.appendChild(c);
   });
 });
 </script>
-""" % json.dumps(payload)
+""" % (len(DESK_IDS), json.dumps(payload))
 
-selected_from_component = st.components.v1.html(html, height=300)
-
-if selected_from_component is not None:
-    st.session_state.selected_cells = selected_from_component
+st.components.v1.html(html, height=1200)
 
 # --------------------------------------------------
-# CONFIRM
+# CONFIRM BOOKING
 # --------------------------------------------------
 if st.session_state.selected_cells:
-    st.markdown("### Booking Summary")
-    st.write(st.session_state.selected_cells)
+    st.markdown("### Booking summary")
+    st.write(f"{len(st.session_state.selected_cells)} slot(s) selected")
 
-    if st.button("Confirm booking"):
+if st.button("Confirm booking"):
+    if not st.session_state.selected_cells:
+        st.warning("Please select at least one slot.")
+    else:
         conn = get_conn()
         cur = conn.cursor()
         for key in st.session_state.selected_cells:
@@ -180,6 +269,11 @@ if st.session_state.selected_cells:
             )
         conn.commit()
         conn.close()
+
+        log_action(
+            action="NEW_BOOKING",
+            details=f"{len(st.session_state.selected_cells)} slots on {date_iso}",
+        )
 
         st.session_state.selected_cells = []
         st.success("Booking confirmed.")
