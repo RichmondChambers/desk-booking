@@ -26,7 +26,7 @@ if not st.session_state.can_book:
     st.stop()
 
 if st.session_state.user_id is None:
-    st.error("User session not initialised.")
+    st.error("User session not initialised. Please reload the app.")
     st.stop()
 
 is_admin = st.session_state.role == "admin"
@@ -70,7 +70,7 @@ end_str = end_time.strftime("%H:%M")
 
 
 # ---------------------------------------------------
-# FETCH BOOKINGS FOR DAY (WITH USER NAMES)
+# FETCH BOOKINGS FOR SELECTED DAY / TIME
 # ---------------------------------------------------
 rows = c.execute(
     """
@@ -103,43 +103,31 @@ st.subheader("Desk Availability (click to select)")
 cols = st.columns(5)
 
 for desk in range(1, 16):
-    tooltip = ""
-    available = desk not in booked
-
-    if not available:
-        tooltip = "\n".join(booked[desk])
+    is_available = desk not in booked
+    tooltip = "\n".join(booked.get(desk, [])) or "Available"
 
     with cols[(desk - 1) % 5]:
-        label = f"Desk {desk}"
-
-        if available or is_admin:
+        if is_available or is_admin:
             if st.button(
-                label,
+                f"Desk {desk}",
                 key=f"desk_{desk}",
-                help=tooltip or "Available",
+                help=tooltip,
             ):
                 st.session_state.selected_desk = desk
         else:
             st.button(
-                label,
+                f"Desk {desk}",
                 key=f"desk_{desk}",
                 disabled=True,
                 help=tooltip,
             )
 
 
-# ---------------------------------------------------
-# SELECTED DESK CONFIRMATION
-# ---------------------------------------------------
 if st.session_state.selected_desk:
     st.success(f"Selected desk: {st.session_state.selected_desk}")
 
-
-# ---------------------------------------------------
-# ADMIN OVERRIDE NOTICE
-# ---------------------------------------------------
 if is_admin:
-    st.info("Admin override enabled: you may book an occupied desk.")
+    st.info("Admin override enabled: occupied desks may be booked.")
 
 
 # ---------------------------------------------------
@@ -179,42 +167,89 @@ if st.button("Confirm Booking"):
 
 
 # ---------------------------------------------------
-# WEEKLY DESK PLANNER
+# WEEKLY DESK PLANNER (VISUAL)
 # ---------------------------------------------------
 st.markdown("---")
 st.subheader("Weekly Desk Planner")
 
 week_start = date_choice - timedelta(days=date_choice.weekday())
-days = [week_start + timedelta(days=i) for i in range(5)]
+week_days = [week_start + timedelta(days=i) for i in range(5)]
 
-planner = c.execute(
+planner_rows = c.execute(
     """
     SELECT b.desk_id, b.date, b.start_time, b.end_time, u.name
     FROM bookings b
     JOIN users u ON u.id = b.user_id
     WHERE b.date BETWEEN ? AND ?
       AND b.status = 'booked'
-    ORDER BY b.desk_id, b.date
+    ORDER BY b.desk_id, b.date, b.start_time
     """,
-    (days[0].strftime("%Y-%m-%d"), days[-1].strftime("%Y-%m-%d")),
+    (
+        week_days[0].strftime("%Y-%m-%d"),
+        week_days[-1].strftime("%Y-%m-%d"),
+    ),
 ).fetchall()
 
-planner_map = {}
-for desk, d, start, end, name in planner:
-    planner_map.setdefault((desk, d), []).append(
+planner = {}
+for desk, d, start, end, name in planner_rows:
+    planner.setdefault((desk, d), []).append(
         f"{name} ({start}–{end})"
     )
 
-header = ["Desk"] + [uk_date(d) for d in days]
-st.markdown(" | ".join(header))
-st.markdown(" | ".join(["---"] * len(header)))
 
+# Header
+header_cols = st.columns([1] + [2] * 5)
+header_cols[0].markdown("### Desk")
+
+for i, d in enumerate(week_days):
+    header_cols[i + 1].markdown(
+        f"### {d.strftime('%a')}<br>{uk_date(d)}",
+        unsafe_allow_html=True,
+    )
+
+
+# Rows
 for desk in range(1, 16):
-    row = [f"Desk {desk}"]
-    for d in days:
-        cell = planner_map.get((desk, d.strftime("%Y-%m-%d")), [])
-        row.append("<br>".join(cell) if cell else "—")
-    st.markdown(" | ".join(row), unsafe_allow_html=True)
+    row_cols = st.columns([1] + [2] * 5)
+    row_cols[0].markdown(f"**Desk {desk}**")
+
+    for i, d in enumerate(week_days):
+        entries = planner.get((desk, d.strftime("%Y-%m-%d")), [])
+
+        if entries:
+            tooltip = "\n".join(entries)
+            content = "<br>".join(entries)
+            row_cols[i + 1].markdown(
+                f"""
+                <div style="
+                    background-color:#fdecea;
+                    border-left:4px solid #e5533d;
+                    padding:8px;
+                    border-radius:6px;
+                    font-size:0.85rem;
+                " title="{tooltip}">
+                    {content}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            row_cols[i + 1].markdown(
+                """
+                <div style="
+                    background-color:#e8f5e9;
+                    border-left:4px solid #4caf50;
+                    padding:8px;
+                    border-radius:6px;
+                    text-align:center;
+                    font-size:0.85rem;
+                    color:#2e7d32;
+                ">
+                    Available
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 # ---------------------------------------------------
