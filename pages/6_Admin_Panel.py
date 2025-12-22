@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 
 from utils.db import get_conn
 from utils.permissions import require_admin
@@ -19,16 +18,13 @@ st.title("Admin Panel")
 # LOAD USERS
 # ---------------------------------------------------
 conn = get_conn()
-c = conn.cursor()
-
-users = c.execute(
+users = conn.execute(
     """
-    SELECT id, name, email, role, can_book
+    SELECT id, name, email, role, can_book, is_active
     FROM users
     ORDER BY email
     """
 ).fetchall()
-
 conn.close()
 
 # ---------------------------------------------------
@@ -36,20 +32,23 @@ conn.close()
 # ---------------------------------------------------
 st.subheader("User Management")
 
-for user_id, name, email, role, can_book in users:
+for user_id, name, email, role, can_book, is_active in users:
 
     is_self = email == st.session_state.user_email
 
     with st.container(border=True):
-        col1, col2, col3, col4, col5 = st.columns([3, 4, 2, 2, 3])
+        col1, col2, col3, col4, col5, col6 = st.columns([3, 4, 2, 2, 2, 3])
 
         col1.markdown(f"**{name}**")
         col2.markdown(email)
         col3.markdown(f"Role: **{role}**")
         col4.markdown(f"Can book: **{'Yes' if can_book else 'No'}**")
+        col5.markdown(f"Active: **{'Yes' if is_active else 'No'}**")
 
-        with col5:
-            # ---- ROLE TOGGLE ----
+        with col6:
+            # -------------------------------
+            # ROLE TOGGLE
+            # -------------------------------
             if role == "admin":
                 if st.button(
                     "Remove admin",
@@ -91,13 +90,15 @@ for user_id, name, email, role, can_book in users:
 
                     st.rerun()
 
-            # ---- BOOKING PERMISSION TOGGLE ----
+            # -------------------------------
+            # BOOKING PERMISSION TOGGLE
+            # -------------------------------
             toggle_label = "Disable booking" if can_book else "Enable booking"
 
             if st.button(
                 toggle_label,
                 key=f"toggle_booking_{user_id}",
-                disabled=is_self,
+                disabled=is_self or not is_active,
             ):
                 log_action(
                     action="TOGGLE_CAN_BOOK",
@@ -109,6 +110,49 @@ for user_id, name, email, role, can_book in users:
                     "UPDATE users SET can_book=? WHERE id=?",
                     (0 if can_book else 1, user_id),
                 )
+                conn.commit()
+                conn.close()
+
+                st.rerun()
+
+            # -------------------------------
+            # ACTIVE STATUS TOGGLE (SOFT DEACTIVATION)
+            # -------------------------------
+            status_label = "Deactivate user" if is_active else "Activate user"
+
+            if st.button(
+                status_label,
+                key=f"toggle_active_{user_id}",
+                disabled=is_self,
+            ):
+                log_action(
+                    action="TOGGLE_ACTIVE",
+                    details=f"{'Deactivated' if is_active else 'Activated'} user {email}",
+                )
+
+                conn = get_conn()
+
+                if is_active:
+                    # Deactivate + disable booking
+                    conn.execute(
+                        """
+                        UPDATE users
+                        SET is_active=0, can_book=0
+                        WHERE id=?
+                        """,
+                        (user_id,),
+                    )
+                else:
+                    # Reactivate (booking must be re-enabled manually)
+                    conn.execute(
+                        """
+                        UPDATE users
+                        SET is_active=1
+                        WHERE id=?
+                        """,
+                        (user_id,),
+                    )
+
                 conn.commit()
                 conn.close()
 
