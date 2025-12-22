@@ -23,8 +23,6 @@ if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
-is_admin = st.session_state.role == "admin"
-
 # --------------------------------------------------
 # DATE PICKER
 # --------------------------------------------------
@@ -64,16 +62,17 @@ DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # --------------------------------------------------
-# TIME SLOTS (09:00 → 18:00 INCLUSIVE)
+# TIME SLOTS (09:00 → 18:00, LAST SLOT 17:30)
 # --------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
 STEP = 30
 
 slots = []
-cur = datetime.combine(date.today(), START)
-end_dt = datetime.combine(date.today(), END)
-while cur <= end_dt:
+cur = datetime.combine(selected_date, START)
+end_dt = datetime.combine(selected_date, END)
+
+while cur < end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -81,7 +80,7 @@ while cur <= end_dt:
 def is_past(t: time) -> bool:
     if selected_date != date.today():
         return False
-    return datetime.combine(date.today(), t) < datetime.now()
+    return datetime.combine(selected_date, t) < datetime.now()
 
 
 # --------------------------------------------------
@@ -113,31 +112,14 @@ for desk_id, start, end, user_name, uid in rows:
                 mine.add(key)
 
 # --------------------------------------------------
-# INLINE LEGEND (unchanged)
+# LEGEND
 # --------------------------------------------------
 st.markdown(
     """
 <style>
-.legend {
-  display:flex;
-  gap:24px;
-  margin-bottom:16px;
-  font-size:14px;
-  align-items:center;
-}
-.legend-item{
-  display:flex;
-  gap:10px;
-  align-items:center;
-}
-.legend-sq{
-  width:18px;
-  height:18px;
-  border-radius:2px;
-  border:1px solid rgba(255,255,255,0.25);
-  display:inline-block;
-  flex: 0 0 auto;
-}
+.legend { display:flex; gap:24px; margin-bottom:16px; font-size:14px; align-items:center; }
+.legend-item{ display:flex; gap:10px; align-items:center; }
+.legend-sq{ width:18px; height:18px; border-radius:2px; border:1px solid rgba(255,255,255,0.25); }
 .legend-available{ background:#ffffff; }
 .legend-own{ background:#009fdf; }
 .legend-booked{ background:#c0392b; }
@@ -145,26 +127,17 @@ st.markdown(
 </style>
 
 <div class="legend">
-  <div class="legend-item" style="color:#ffffff;">
-    <span class="legend-sq legend-available"></span> Available
-  </div>
-  <div class="legend-item" style="color:#009fdf;">
-    <span class="legend-sq legend-own"></span> Your booking
-  </div>
-  <div class="legend-item" style="color:#c0392b;">
-    <span class="legend-sq legend-booked"></span> Booked
-  </div>
-  <div class="legend-item" style="color:#666666;">
-    <span class="legend-sq legend-past"></span> Past
-  </div>
+  <div class="legend-item"><span class="legend-sq legend-available"></span> Available</div>
+  <div class="legend-item"><span class="legend-sq legend-own"></span> Your booking</div>
+  <div class="legend-item"><span class="legend-sq legend-booked"></span> Booked</div>
+  <div class="legend-item"><span class="legend-sq legend-past"></span> Past</div>
 </div>
 """,
     unsafe_allow_html=True,
 )
 
 # --------------------------------------------------
-# GRID HTML + JS
-# Font synced from parent Streamlit app
+# GRID
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -182,155 +155,56 @@ payload = {
     "dateLabel": selected_date.strftime("%d/%m/%Y"),
 }
 
-html = f"""
+html = """
 <style>
-html, body {{
-  margin: 0;
-  padding: 0;
-  font-family: inherit;
-}}
-
-* {{
-  font-family: inherit;
-  box-sizing: border-box;
-}}
-
-.grid {{
-  display: grid;
-  grid-template-columns: 90px repeat({len(DESK_IDS)}, 1fr);
-  gap: 12px;
-}}
-
-.time {{
-  color: #e5e7eb;
-  font-size: 14px;
-  font-weight: 500;
-}}
-
-.header {{
-  color: #e5e7eb;
-  font-size: 15px;
-  font-weight: 600;
-  text-align: center;
-}}
-
-.cell {{
-  height: 42px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.25);
-}}
-
-.available {{
-  background: #ffffff;
-  cursor: pointer;
-}}
-
-.available:hover {{
-  outline: 2px solid #009fdf;
-}}
-
-.selected {{
-  background: #009fdf !important;
-}}
-
-.own {{
-  background: #009fdf;
-  cursor: not-allowed;
-}}
-
-.booked {{
-  background: #c0392b;
-  cursor: not-allowed;
-}}
-
-.past {{
-  background: #2c2c2c;
-  cursor: not-allowed;
-}}
-
-#info {{
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.08);
-  font-size: 14px;
-  min-height: 38px;
-  color: #e5e7eb;
-}}
+.grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
+.time,.header { color:#e5e7eb; text-align:center; }
+.cell { height:42px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); }
+.available { background:#fff; cursor:pointer; }
+.selected { background:#009fdf!important; }
+.own { background:#009fdf; cursor:not-allowed; }
+.booked { background:#c0392b; cursor:not-allowed; }
+.past { background:#2c2c2c; cursor:not-allowed; }
+#info { margin-bottom:12px; padding:10px; border-radius:10px; background:rgba(255,255,255,0.08); color:#e5e7eb; }
 </style>
 
 <div id="info">Hover over a slot to see details.</div>
 <div class="grid" id="grid"></div>
 
 <script>
-// --- Sync font from parent Streamlit app ---
-(function syncStreamlitFont() {{
-  try {{
-    const parentBody = window.parent?.document?.body;
-    if (!parentBody) return;
-
-    const parentFont = window.parent.getComputedStyle(parentBody).fontFamily;
-    if (parentFont) {{
-      document.documentElement.style.fontFamily = parentFont;
-      document.body.style.fontFamily = parentFont;
-    }}
-  }} catch (e) {{}}
-}})();
-
-const data = {json.dumps(payload)};
+const data = %s;
 const grid = document.getElementById("grid");
 const info = document.getElementById("info");
 
-let selected = new Set(data.selected);
-let dragging = false;
-
-function statusForCell(key) {{
+function statusForCell(key) {
   if (data.mine.includes(key)) return "Your booking";
   if (data.booked[key]) return "Booked";
   if (data.past.includes(key)) return "Past";
   return "Available";
-}}
+}
 
-html = f"""
-<script>
-function showInfo(deskId, timeStr, key) {{
+function showInfo(deskId, timeStr, key) {
   const deskName = data.deskNames[deskId] ?? String(deskId);
-  let text = `${{data.dateLabel}} · ${{deskName}} · ${{timeStr}} · ${{statusForCell(key)}}`;
-  if (data.booked[key]) text += ` · ${{data.booked[key]}}`;
+  let text = `${data.dateLabel} · ${deskName} · ${timeStr} · ${statusForCell(key)}`;
+  if (data.booked[key]) text += ` · ${data.booked[key]}`;
   info.innerText = text;
-}}
-</script>
-"""
+}
 
-function toggle(key, el) {{
-  if (!el.classList.contains("available")) return;
-  if (selected.has(key)) {{
-    selected.delete(key);
-    el.classList.remove("selected");
-  }} else {{
-    selected.add(key);
-    el.classList.add("selected");
-  }}
-  window.parent.postMessage({{ selected: Array.from(selected) }}, "*");
-}}
-
-// Header row
 grid.appendChild(document.createElement("div"));
-data.desks.forEach(d => {{
+data.desks.forEach(d => {
   const h = document.createElement("div");
   h.className = "header";
   h.innerText = data.deskNames[d];
   grid.appendChild(h);
-}});
+});
 
-// Rows
-data.times.forEach(timeStr => {{
+data.times.forEach(timeStr => {
   const t = document.createElement("div");
   t.className = "time";
   t.innerText = timeStr;
   grid.appendChild(t);
 
-  data.desks.forEach(deskId => {{
+  data.desks.forEach(deskId => {
     const key = deskId + "_" + timeStr;
     const c = document.createElement("div");
 
@@ -339,36 +213,14 @@ data.times.forEach(timeStr => {{
     else if (data.past.includes(key)) c.className = "cell past";
     else c.className = "cell available";
 
-    if (selected.has(key)) c.classList.add("selected");
-
     c.onmouseenter = () => showInfo(deskId, timeStr, key);
-    c.onmousedown = () => {{
-      showInfo(deskId, timeStr, key);
-      if (!c.classList.contains("available")) return;
-      dragging = true;
-      toggle(key, c);
-    }};
-    c.onmouseover = () => {{
-      showInfo(deskId, timeStr, key);
-      if (dragging) toggle(key, c);
-    }};
-    c.onmouseup = () => dragging = false;
-
     grid.appendChild(c);
-  }});
-}});
-
-document.onmouseup = () => dragging = false;
+  });
+});
 </script>
-"""
+""" % (len(DESK_IDS), json.dumps(payload))
 
-result = st.components.v1.html(html, height=1400)
-
-# --------------------------------------------------
-# RECEIVE SELECTION
-# --------------------------------------------------
-if isinstance(result, dict) and "selected" in result:
-    st.session_state.selected_cells = result["selected"]
+st.components.v1.html(html, height=1400)
 
 # --------------------------------------------------
 # BOOKING SUMMARY
@@ -379,25 +231,29 @@ if st.session_state.selected_cells:
 
     if st.button("Confirm booking"):
         conn = get_conn()
-        c = conn.cursor()
+        try:
+            c = conn.cursor()
+            for key in st.session_state.selected_cells:
+                desk_id, t = key.split("_")
+                end = (
+                    datetime.combine(selected_date, time.fromisoformat(t))
+                    + timedelta(minutes=30)
+                ).strftime("%H:%M")
 
-        for key in st.session_state.selected_cells:
-            desk_id, t = key.split("_")
-            end = (
-                datetime.combine(date.today(), time.fromisoformat(t))
-                + timedelta(minutes=30)
-            ).strftime("%H:%M")
+                c.execute(
+                    """
+                    INSERT INTO bookings (user_id, desk_id, date, start_time, end_time, status)
+                    VALUES (?, ?, ?, ?, ?, 'booked')
+                    """,
+                    (st.session_state.user_id, int(desk_id), date_iso, t, end),
+                )
 
-            c.execute(
-                """
-                INSERT INTO bookings (user_id, desk_id, date, start_time, end_time, status)
-                VALUES (?, ?, ?, ?, ?, 'booked')
-                """,
-                (st.session_state.user_id, int(desk_id), date_iso, t, end),
-            )
-
-        conn.commit()
-        conn.close()
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
         log_action(
             action="NEW_BOOKING",
