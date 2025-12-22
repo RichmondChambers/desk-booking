@@ -2,19 +2,17 @@ import streamlit as st
 from datetime import datetime, date, time, timedelta
 from utils.db import get_conn
 from utils.audit import audit_log
-from utils.dates import uk_date
-from utils.holidays import is_weekend, is_public_holiday
 
 
-# ===================================================
+# =====================================================
 # PAGE SETUP
-# ===================================================
+# =====================================================
 st.title("Book a Desk")
 
 
-# ===================================================
-# SESSION STATE
-# ===================================================
+# =====================================================
+# SESSION STATE SAFETY
+# =====================================================
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", "")
 st.session_state.setdefault("user_name", "")
@@ -36,37 +34,26 @@ if st.session_state.user_id is None:
 is_admin = st.session_state.role == "admin"
 
 
-# ===================================================
-# DATABASE
-# ===================================================
-conn = get_conn()
-c = conn.cursor()
-
-
-# ===================================================
-# DATE SELECTION
-# ===================================================
+# =====================================================
+# DATE SELECTION (UK FORMAT DISPLAY)
+# =====================================================
 date_choice = st.date_input("Select date")
-st.caption(f"Selected date: {uk_date(date_choice)}")
+st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
 
 if date_choice < date.today():
     st.error("Bookings cannot be made for past dates.")
     st.stop()
 
-if is_weekend(date_choice):
+if date_choice.weekday() >= 5:
     st.error("Bookings cannot be made on weekends.")
-    st.stop()
-
-if is_public_holiday(date_choice):
-    st.error("Bookings cannot be made on UK public holidays.")
     st.stop()
 
 date_iso = date_choice.strftime("%Y-%m-%d")
 
 
-# ===================================================
+# =====================================================
 # TIME GRID CONFIG (09:00–18:00 EXACT)
-# ===================================================
+# =====================================================
 START_HOUR = 9
 END_HOUR = 18
 SLOT_MINUTES = 30
@@ -88,9 +75,12 @@ def generate_slots():
 SLOTS = generate_slots()
 
 
-# ===================================================
-# FETCH EXISTING BOOKINGS
-# ===================================================
+# =====================================================
+# DATABASE
+# =====================================================
+conn = get_conn()
+c = conn.cursor()
+
 rows = c.execute(
     """
     SELECT b.desk_id, b.start_time, b.end_time, u.name, u.id
@@ -102,24 +92,28 @@ rows = c.execute(
     (date_iso,),
 ).fetchall()
 
+
+# =====================================================
+# NORMALISE BOOKINGS INTO SLOT MAP
+# =====================================================
 booked = {}
 own = set()
 
-for desk, start, end, name, uid in rows:
+for desk_id, start, end, name, uid in rows:
     start_t = time.fromisoformat(start)
     end_t = time.fromisoformat(end)
 
-    for s, e in SLOTS:
-        if s >= start_t and e <= end_t:
-            booked[(desk, s)] = f"{name} ({start}–{end})"
+    for slot_start, slot_end in SLOTS:
+        if slot_start >= start_t and slot_end <= end_t:
+            booked[(desk_id, slot_start)] = f"{name} ({start}–{end})"
             if uid == st.session_state.user_id:
-                own.add((desk, s))
+                own.add((desk_id, slot_start))
 
 
-# ===================================================
+# =====================================================
 # HELPERS
-# ===================================================
-def is_past_slot(slot_time: time) -> bool:
+# =====================================================
+def is_past_slot(slot_time):
     if date_choice != date.today():
         return False
     return datetime.combine(date.today(), slot_time) < datetime.now()
@@ -137,32 +131,34 @@ def in_selected_range(desk, slot):
     return start <= slot <= end
 
 
-# ===================================================
-# CSS STYLES
-# ===================================================
+# =====================================================
+# CSS — BUTTON-BASED CELLS (SINGLE LAYER)
+# =====================================================
 st.markdown(
     """
     <style>
-    .cell {
-        height: 34px;
-        border-radius: 6px;
-        border: 1px solid #444;
-        cursor: pointer;
+    button[kind="secondary"] {
+        height: 34px !important;
+        width: 100% !important;
+        border-radius: 6px !important;
+        border: 1px solid #444 !important;
+        padding: 0 !important;
     }
-    .available { background-color: #1e3a2f; }
-    .booked { background-color: #4a1f1f; cursor: not-allowed; }
-    .own { background-color: #1f3a4a; }
-    .selected { background-color: #2563eb; }
-    .past { background-color: #2a2a2a; cursor: not-allowed; }
+
+    .available button { background-color: #1e3a2f !important; }
+    .booked button { background-color: #4a1f1f !important; }
+    .own button { background-color: #1f3a4a !important; }
+    .selected button { background-color: #2563eb !important; }
+    .past button { background-color: #2a2a2a !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# ===================================================
+# =====================================================
 # GRID UI
-# ===================================================
+# =====================================================
 st.subheader("Select desk and time range")
 
 header = st.columns([1] + [1] * len(DESKS))
@@ -187,22 +183,27 @@ for slot_start, slot_end in SLOTS:
         )
 
         if selected:
-            css = "cell selected"
+            css = "selected"
         elif is_own:
-            css = "cell own"
+            css = "own"
         elif booked_info:
-            css = "cell booked"
+            css = "booked"
         elif past:
-            css = "cell past"
+            css = "past"
         else:
-            css = "cell available"
+            css = "available"
 
-        if row[i + 1].button(
-            " ",
-            key=f"{desk}_{slot_start}",
-            help=booked_info or "Available",
-            disabled=disabled,
-        ):
+        with row[i + 1]:
+            st.markdown(f"<div class='{css}'>", unsafe_allow_html=True)
+            clicked = st.button(
+                " ",
+                key=f"{desk}_{slot_start}",
+                help=booked_info or "Available",
+                disabled=disabled,
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        if clicked:
             if st.session_state.selected_desk not in (None, desk):
                 st.warning("You can only select one desk.")
             else:
@@ -213,15 +214,10 @@ for slot_start, slot_end in SLOTS:
                 else:
                     st.session_state.selection_end = slot_start
 
-        row[i + 1].markdown(
-            f"<div class='{css}'></div>",
-            unsafe_allow_html=True,
-        )
 
-
-# ===================================================
+# =====================================================
 # CONFIRM BOOKING
-# ===================================================
+# =====================================================
 if st.session_state.selection_start and st.session_state.selection_end:
     start_slot = min(
         st.session_state.selection_start,
@@ -236,8 +232,7 @@ if st.session_state.selection_start and st.session_state.selection_end:
 
     st.success(
         f"Desk {st.session_state.selected_desk} "
-        f"from {start_slot.strftime('%H:%M')} "
-        f"to {end_slot.strftime('%H:%M')}"
+        f"{start_slot.strftime('%H:%M')}–{end_slot.strftime('%H:%M')}"
     )
 
     if st.button("Confirm Booking"):
@@ -263,7 +258,7 @@ if st.session_state.selection_start and st.session_state.selection_end:
             f"desk={st.session_state.selected_desk} "
             f"{start_slot.strftime('%H:%M')}-"
             f"{end_slot.strftime('%H:%M')} "
-            f"on {uk_date(date_choice)}",
+            f"on {date_choice.strftime('%d/%m/%Y')}",
         )
 
         st.success("Booking confirmed.")
@@ -273,7 +268,7 @@ if st.session_state.selection_start and st.session_state.selection_end:
         st.rerun()
 
 
-# ===================================================
+# =====================================================
 # CLEANUP
-# ===================================================
+# =====================================================
 conn.close()
