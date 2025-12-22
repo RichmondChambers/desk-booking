@@ -4,12 +4,12 @@ from utils.db import init_db, get_conn
 st.set_page_config(page_title="Desk Booking", layout="wide")
 
 # ---------------------------------------------------
-# INIT DB
+# INITIALISE DATABASE
 # ---------------------------------------------------
 init_db()
 
 # ---------------------------------------------------
-# SESSION INITIALISATION
+# INITIALISE SESSION DEFAULTS
 # ---------------------------------------------------
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", None)
@@ -18,37 +18,44 @@ st.session_state.setdefault("role", "user")
 st.session_state.setdefault("can_book", 1)
 
 # ---------------------------------------------------
-# AUTHENTICATION (CLOUD vs LOCAL)
+# AUTHENTICATION (STRICT)
 # ---------------------------------------------------
 if st.session_state.user_id is None:
 
-    user = st.experimental_user  # Cloud provides email; Local usually does not
+    user = st.experimental_user  # provided only when Cloud auth is enabled
 
-    # -----------------------------------------------
-    # CASE 1 — RUNNING LOCALLY (NO AUTH AVAILABLE)
-    # -----------------------------------------------
-    if user is None or getattr(user, "email", None) is None:
-        st.warning("Running in LOCAL DEVELOPMENT MODE — authentication bypassed.")
-        fake_email = "localdev@richmondchambers.com"
-        fake_name = "Local Developer"
+    # ---- HARD FAIL IF AUTHENTICATION NOT ENABLED ----
+    if user is None:
+        st.title("Desk Booking System")
+        st.error(
+            "Authentication failed: Streamlit did not provide a user identity.\n\n"
+            "Please ensure **User Authentication is enabled** in Streamlit Cloud."
+        )
+        st.stop()
 
-        email = fake_email
-        name = fake_name
+    # Extract authenticated email
+    email = getattr(user, "email", None)
+    name = getattr(user, "name", None)
 
-    else:
-        # -----------------------------------------------
-        # CASE 2 — STREAMLIT CLOUD AUTHENTICATED USER
-        # -----------------------------------------------
-        email = user.email.lower()
-        name = user.name or email.split("@")[0]
+    if email is None:
+        st.title("Desk Booking System")
+        st.error(
+            "Authentication error: No email address was provided by Streamlit.\n\n"
+            "Only authenticated @richmondchambers.com users may access this system."
+        )
+        st.stop()
 
-        # Domain restriction
-        if not email.endswith("@richmondchambers.com"):
-            st.error("Access restricted to Richmond Chambers users.")
-            st.stop()
+    email = email.lower()
+    name = name or email.split("@")[0]
+
+    # ---- STRICT DOMAIN ENFORCEMENT ----
+    if not email.endswith("@richmondchambers.com"):
+        st.title("Desk Booking System")
+        st.error("Access denied — only @richmondchambers.com accounts can use this system.")
+        st.stop()
 
     # ---------------------------------------------------
-    # DATABASE USER LOOKUP / CREATION
+    # LOOK UP OR CREATE USER IN DATABASE
     # ---------------------------------------------------
     conn = get_conn()
     c = conn.cursor()
@@ -71,7 +78,7 @@ if st.session_state.user_id is None:
 
     conn.close()
 
-    # Save to session
+    # Save into session state
     st.session_state.user_id = row[0]
     st.session_state.user_name = row[1]
     st.session_state.role = row[2]
@@ -86,4 +93,4 @@ st.sidebar.markdown(f"**Email:** {st.session_state.user_email}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
 
 st.title("Desk Booking System")
-st.write("Use the sidebar to navigate.")
+st.write("Use the sidebar to navigate between booking functions.")
