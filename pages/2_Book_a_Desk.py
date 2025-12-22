@@ -11,7 +11,7 @@ st.title("Book a Desk")
 
 
 # =====================================================
-# SESSION STATE (AUTH-SAFE, MULTIPAGE-CORRECT)
+# SESSION STATE (AUTH-SAFE)
 # =====================================================
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", None)
@@ -23,12 +23,18 @@ st.session_state.setdefault("selected_desk", None)
 st.session_state.setdefault("selection", [])
 
 # -----------------------------------------------------
-# AUTHENTICATE ONLY ONCE PER SESSION
+# AUTHENTICATE ONCE (STREAMLIT CLOUD SAFE)
 # -----------------------------------------------------
 if st.session_state.user_id is None:
-    user = st.experimental_user
 
-    if user is None or not user.is_authenticated:
+    user = st.experimental_user  # ✅ CORRECT OBJECT
+
+    if user is None:
+        st.error("Authentication unavailable. Please refresh.")
+        st.stop()
+
+    # IMPORTANT: only check is_authenticated on experimental_user
+    if not getattr(user, "is_authenticated", False):
         st.info("Please sign in to use the desk booking system.")
         st.stop()
 
