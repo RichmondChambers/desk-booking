@@ -2,6 +2,7 @@ import streamlit as st
 from google_auth_oauthlib.flow import Flow
 
 def require_login():
+    # Already authenticated
     if "oauth_email" in st.session_state:
         return
 
@@ -15,7 +16,11 @@ def require_login():
                 "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
             }
         },
-        scopes=["openid", "email", "profile"],
+        scopes=[
+            "openid",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
+        ],
         redirect_uri=st.secrets["oauth"]["redirect_uri"],
     )
 
@@ -26,5 +31,8 @@ def require_login():
 
     st.title("Desk Booking System")
     st.markdown("### Sign in required")
-    st.markdown(f'<a href="{auth_url}">Sign in with Google</a>', unsafe_allow_html=True)
+    st.markdown(
+        f'<a href="{auth_url}">Sign in with Google</a>',
+        unsafe_allow_html=True,
+    )
     st.stop()
