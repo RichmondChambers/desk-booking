@@ -84,7 +84,7 @@ def is_past(t: time) -> bool:
 
 
 # --------------------------------------------------
-# HELPER: USER INITIALS  (NEW)
+# HELPER: USER INITIALS (STEP 1)
 # --------------------------------------------------
 def make_initials(name: str) -> str:
     parts = [p for p in name.strip().split() if p]
@@ -193,6 +193,28 @@ html, body { margin:0; padding:0; font-family:inherit; }
 <div class="grid" id="grid"></div>
 
 <script>
+// -------- Font sync from Streamlit parent --------
+(function syncStreamlitFont() {
+  function apply() {
+    try {
+      const p = window.parent?.document?.body;
+      if (!p) return false;
+      const f = window.parent.getComputedStyle(p).fontFamily;
+      if (f) {
+        document.documentElement.style.fontFamily = f;
+        document.body.style.fontFamily = f;
+        return true;
+      }
+    } catch(e){}
+    return false;
+  }
+  if (apply()) return;
+  let i = 0;
+  const t = setInterval(() => {
+    if (apply() || ++i > 20) clearInterval(t);
+  }, 100);
+})();
+
 const data = %s;
 const grid = document.getElementById("grid");
 const info = document.getElementById("info");
