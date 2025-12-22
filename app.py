@@ -12,7 +12,11 @@ st.set_page_config(page_title="Desk Booking", layout="wide")
 # ---------------------------------------------------
 query_params = st.query_params
 
-if "code" in query_params and "oauth_email" not in st.session_state:
+if (
+    "code" in query_params
+    and "oauth_email" not in st.session_state
+    and "oauth_state" in st.session_state
+):
 
     if "oauth_state" not in st.session_state:
         st.error("OAuth state missing. Please click 'Sign in with Google' again.")
