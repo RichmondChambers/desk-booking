@@ -115,16 +115,16 @@ for desk_id, start, end, user_name, uid in rows:
 # INLINE LEGEND
 # --------------------------------------------------
 st.markdown("""
-<div style="display:flex; gap:24px; margin-bottom:12px; font-size:14px;">
-  <div style="color:#fff;">⬜ Available</div>
+<div style="display:flex; gap:24px; margin-bottom:16px; font-size:14px;">
+  <div style="color:#ffffff;">⬜ Available</div>
   <div style="color:#009fdf;">■ Your booking</div>
   <div style="color:#c0392b;">■ Booked</div>
-  <div style="color:#555;">■ Past</div>
+  <div style="color:#666666;">■ Past</div>
 </div>
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------
-# GRID HTML + JS (FULLY INTERACTIVE)
+# GRID HTML + JS
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -143,6 +143,10 @@ payload = {
 
 html = f"""
 <style>
+* {{
+  font-family: inherit;
+}}
+
 .grid {{
   display: grid;
   grid-template-columns: 90px repeat({len(DESK_IDS)}, 1fr);
@@ -151,12 +155,14 @@ html = f"""
 
 .time {{
   color: #e5e7eb;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
 }}
 
 .header {{
   color: #e5e7eb;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   text-align: center;
 }}
 
@@ -213,7 +219,7 @@ data.desks.forEach(d => {{
   grid.appendChild(h);
 }});
 
-// Build rows
+// Rows
 data.times.forEach(time => {{
   const t = document.createElement("div");
   t.className = "time";
@@ -264,7 +270,8 @@ function toggle(key, el) {{
 </script>
 """
 
-result = st.components.v1.html(html, height=1000)
+# IMPORTANT: increased height so 18:00 is always visible
+result = st.components.v1.html(html, height=1400)
 
 # --------------------------------------------------
 # RECEIVE SELECTION
