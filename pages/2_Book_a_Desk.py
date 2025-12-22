@@ -7,7 +7,7 @@ import json
 st.title("Book a Desk")
 
 # --------------------------------------------------
-# SESSION SAFETY (RESTORED TO ORIGINAL)
+# SESSION SAFETY
 # --------------------------------------------------
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", None)
@@ -39,7 +39,7 @@ if selected_date.weekday() >= 5:
 date_iso = selected_date.strftime("%Y-%m-%d")
 
 # --------------------------------------------------
-# LOAD DESKS (ROBUST ROLE HANDLING + DIAGNOSTIC)
+# LOAD DESKS
 # --------------------------------------------------
 role = st.session_state.get("role", "user")
 
@@ -54,34 +54,17 @@ desks = conn.execute(
     """,
     (role,),
 ).fetchall()
+conn.close()
 
 if not desks:
-    # Diagnostic: are there desks at all, or just all admin-only?
-    total_active = conn.execute(
-        "SELECT COUNT(*) FROM desks WHERE is_active = 1"
-    ).fetchone()[0]
-    total_active_admin_only = conn.execute(
-        "SELECT COUNT(*) FROM desks WHERE is_active = 1 AND admin_only = 1"
-    ).fetchone()[0]
-    conn.close()
-
-    if total_active == 0:
-        st.error("No desks available: there are no active desks in the database (desks.is_active = 1).")
-    else:
-        st.error(
-            f"No desks available for your role '{role}'. "
-            f"Active desks: {total_active}. Active admin-only desks: {total_active_admin_only}. "
-            f"If all desks are admin-only, you must be role='admin' to see them."
-        )
+    st.error("No desks available.")
     st.stop()
-
-conn.close()
 
 DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # --------------------------------------------------
-# TIME SLOTS (09:00 → 18:00, SHOW 18:00)
+# TIME SLOTS (09:00 → 18:00)
 # --------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
@@ -91,7 +74,7 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur <= end_dt:  # <= so 18:00 is visible
+while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -111,7 +94,7 @@ rows = conn.execute(
     SELECT b.desk_id, b.start_time, b.end_time, u.name, u.id
     FROM bookings b
     JOIN users u ON u.id = b.user_id
-    WHERE date=? AND status='booked'
+    WHERE date = ? AND status = 'booked'
     """,
     (date_iso,),
 ).fetchall()
@@ -156,7 +139,7 @@ st.markdown(
 )
 
 # --------------------------------------------------
-# GRID + INTERACTION (ORIGINAL WORKING VERSION)
+# GRID + INTERACTION (STABLE VERSION)
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -296,46 +279,3 @@ document.onmouseup = () => dragging = false;
 """ % (len(DESK_IDS), json.dumps(payload))
 
 st.components.v1.html(html, height=1400)
-
-# --------------------------------------------------
-# BOOKING SUMMARY (UNCHANGED)
-# NOTE: this will only show if selected_cells is populated by Python.
-# In your original implementation, JS selection is visual only.
-# --------------------------------------------------
-if st.session_state.selected_cells:
-    st.markdown("### Booking Summary")
-    st.write(f"{len(st.session_state.selected_cells)} slots selected")
-
-    if st.button("Confirm booking"):
-        conn = get_conn()
-        try:
-            c = conn.cursor()
-            for key in st.session_state.selected_cells:
-                desk_id, t = key.split("_")
-                end = (
-                    datetime.combine(selected_date, time.fromisoformat(t))
-                    + timedelta(minutes=30)
-                ).strftime("%H:%M")
-
-                c.execute(
-                    """
-                    INSERT INTO bookings (user_id, desk_id, date, start_time, end_time, status)
-                    VALUES (?, ?, ?, ?, ?, 'booked')
-                    """,
-                    (st.session_state.user_id, int(desk_id), date_iso, t, end),
-                )
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-
-        log_action(
-            action="NEW_BOOKING",
-            details=f"{len(st.session_state.selected_cells)} slots on {date_iso}",
-        )
-
-        st.session_state.selected_cells = []
-        st.success("Booking confirmed.")
-        st.rerun()
