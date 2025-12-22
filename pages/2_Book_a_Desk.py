@@ -11,46 +11,82 @@ st.title("Book a Desk")
 
 
 # =====================================================
-# SESSION STATE (SOFT GUARDS ONLY)
+# SESSION STATE (ROBUST LAZY INITIALISATION)
 # =====================================================
 st.session_state.setdefault("user_id", None)
-st.session_state.setdefault("user_email", "")
+st.session_state.setdefault("user_email", None)
+st.session_state.setdefault("user_name", None)
 st.session_state.setdefault("role", "user")
 st.session_state.setdefault("can_book", 1)
 
 st.session_state.setdefault("selected_desk", None)
 st.session_state.setdefault("selection", [])
 
-is_admin = st.session_state.role == "admin"
+# ---- Bootstrap user if not already initialised ----
+if st.session_state.user_id is None:
+    user = st.experimental_user
 
+    if not user or not user.is_authenticated:
+        st.error("Please sign in to use the desk booking system.")
+        st.stop()
+
+    email = user.email.lower()
+    name = user.name or email.split("@")[0]
+
+    conn = get_conn()
+    c = conn.cursor()
+
+    row = c.execute(
+        "SELECT id, name, role, can_book FROM users WHERE email=?",
+        (email,),
+    ).fetchone()
+
+    if not row:
+        c.execute(
+            "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
+            (name, email),
+        )
+        conn.commit()
+        row = c.execute(
+            "SELECT id, name, role, can_book FROM users WHERE email=?",
+            (email,),
+        ).fetchone()
+
+    conn.close()
+
+    st.session_state.user_id = row[0]
+    st.session_state.user_name = row[1]
+    st.session_state.role = row[2]
+    st.session_state.can_book = row[3]
+    st.session_state.user_email = email
+
+# ---- Permission check ----
 if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
-if st.session_state.user_id is None:
-    st.info("Loading user session…")
-    st.stop()
+is_admin = st.session_state.role == "admin"
 
 
 # =====================================================
-# DATE
+# DATE SELECTION
 # =====================================================
 date_choice = st.date_input("Select date")
 st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
 
 if date_choice < date.today():
-    st.error("Cannot book past dates.")
+    st.error("Bookings cannot be made for past dates.")
     st.stop()
 
 if date_choice.weekday() >= 5:
-    st.error("Weekends disabled.")
+    st.error("Bookings cannot be made on weekends.")
     st.stop()
 
 date_iso = date_choice.strftime("%Y-%m-%d")
 
 
 # =====================================================
-# TIME GRID CONFIG
+# TIME GRID CONFIG (09:00–18:00)
 # =====================================================
 START_HOUR = 9
 END_HOUR = 18
@@ -58,12 +94,12 @@ SLOT_MINUTES = 30
 DESKS = list(range(1, 16))
 
 def generate_slots():
-    t = datetime.combine(date.today(), time(START_HOUR))
-    end = datetime.combine(date.today(), time(END_HOUR))
     slots = []
-    while t < end:
-        slots.append(t.time())
-        t += timedelta(minutes=SLOT_MINUTES)
+    current = datetime.combine(date.today(), time(START_HOUR))
+    end = datetime.combine(date.today(), time(END_HOUR))
+    while current < end:
+        slots.append(current.time())
+        current += timedelta(minutes=SLOT_MINUTES)
     return slots
 
 SLOTS = generate_slots()
@@ -102,18 +138,18 @@ for desk, start, end, name, uid in rows:
 
 
 # =====================================================
-# HANDLE CLICK / DRAG EVENTS
+# HANDLE CLICK / DRAG EVENTS (QUERY PARAMS)
 # =====================================================
 params = st.query_params
 
 if "desk" in params and "slot" in params:
-    desk = int(params["desk"])
-    slot = time.fromisoformat(params["slot"])
+    clicked_desk = int(params["desk"])
+    clicked_slot = time.fromisoformat(params["slot"])
 
-    if st.session_state.selected_desk in (None, desk):
-        st.session_state.selected_desk = desk
-        if slot not in st.session_state.selection:
-            st.session_state.selection.append(slot)
+    if st.session_state.selected_desk in (None, clicked_desk):
+        st.session_state.selected_desk = clicked_desk
+        if clicked_slot not in st.session_state.selection:
+            st.session_state.selection.append(clicked_slot)
             st.session_state.selection.sort()
 
     st.query_params.clear()
@@ -130,7 +166,7 @@ def is_past(slot):
 
 
 # =====================================================
-# CSS + JS (DRAG SUPPORT)
+# CSS + JS (CLICK + DRAG)
 # =====================================================
 st.markdown("""
 <style>
@@ -158,10 +194,20 @@ st.markdown("""
 .selected { background:#2563eb; }
 .past { background:#2a2a2a; cursor:not-allowed; }
 
-.header { font-weight:600; text-align:center; }
-.time { padding-top:6px; }
+.header {
+    font-weight:600;
+    text-align:center;
+}
 
-a { text-decoration:none; color:inherit; }
+.time {
+    padding-top:6px;
+    font-weight:500;
+}
+
+a {
+    text-decoration:none;
+    color:inherit;
+}
 </style>
 
 <script>
