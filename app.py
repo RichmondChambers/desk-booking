@@ -67,9 +67,10 @@ if (
     st.stop()
 
 # ---------------------------------------------------
-# REQUIRE LOGIN (shows Google sign-in link if needed)
+# REQUIRE LOGIN (do NOT run during OAuth callback)
 # ---------------------------------------------------
-require_login()
+if "code" not in st.query_params:
+    require_login()
 
 # ---------------------------------------------------
 # INITIALISE DATABASE
