@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime
 from utils.db import get_conn
 from utils.audit import audit_log
+from utils.dates import uk_date
 
 
 # ---------------------------------------------------
@@ -13,8 +14,6 @@ st.title("Book a Desk")
 # ---------------------------------------------------
 # SESSION STATE SAFETY (CRITICAL)
 # ---------------------------------------------------
-# Pages must not assume app.py has already run
-
 st.session_state.setdefault("can_book", 1)
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", "internal.user@richmondchambers.com")
@@ -39,6 +38,8 @@ c = conn.cursor()
 # USER INPUTS
 # ---------------------------------------------------
 date_choice = st.date_input("Select date")
+st.caption(f"Selected date: {uk_date(date_choice)}")
+
 start_time = st.time_input("Start time")
 end_time = st.time_input("End time")
 
@@ -108,7 +109,7 @@ if st.button("Confirm Booking"):
     audit_log(
         st.session_state.user_email,
         "NEW_BOOKING",
-        f"desk={desk_id} {start_time}-{end_time} on {date_choice}",
+        f"desk={desk_id} {start_time}-{end_time} on {uk_date(date_choice)}",
     )
 
     st.success("Booking confirmed!")
