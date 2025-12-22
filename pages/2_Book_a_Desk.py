@@ -43,6 +43,16 @@ c = conn.cursor()
 # ---------------------------------------------------
 date_choice = st.date_input("Select date")
 
+from utils.holidays import is_weekend, is_public_holiday
+
+if is_weekend(date_choice):
+    st.error("Bookings cannot be made on weekends.")
+    st.stop()
+
+if is_public_holiday(date_choice):
+    st.error("Bookings cannot be made on UK public holidays.")
+    st.stop()
+
 # UK-format confirmation (authoritative display)
 st.caption(f"Selected date: {uk_date(date_choice)}")
 
