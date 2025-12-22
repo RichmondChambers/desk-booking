@@ -4,6 +4,9 @@ from utils.db import get_conn
 from utils.audit import log_action
 import json
 
+# =====================================================
+# PAGE TITLE
+# =====================================================
 st.title("Book a Desk")
 
 # =====================================================
@@ -23,6 +26,8 @@ if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
+is_admin = st.session_state.role == "admin"
+
 # =====================================================
 # DATE PICKER
 # =====================================================
@@ -40,7 +45,7 @@ if selected_date.weekday() >= 5:
 date_iso = selected_date.strftime("%Y-%m-%d")
 
 # =====================================================
-# LOAD DESKS (ADMIN CONTROLLED)
+# LOAD DESKS
 # =====================================================
 conn = get_conn()
 desks = conn.execute(
@@ -63,7 +68,7 @@ DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # =====================================================
-# TIME SLOTS (09:00–18:00, 30 MIN)
+# TIME SLOTS 09:00–18:00 (30 MIN)
 # =====================================================
 START = time(9, 0)
 END = time(18, 0)
@@ -81,7 +86,9 @@ def generate_slots():
 SLOTS = generate_slots()
 
 def is_past(t):
-    return selected_date == date.today() and datetime.combine(date.today(), t) < datetime.now()
+    if selected_date != date.today():
+        return False
+    return datetime.combine(date.today(), t) < datetime.now()
 
 # =====================================================
 # LOAD BOOKINGS
@@ -92,7 +99,7 @@ rows = conn.execute(
     SELECT b.desk_id, b.start_time, b.end_time, u.name, u.id
     FROM bookings b
     JOIN users u ON u.id = b.user_id
-    WHERE date = ? AND status='booked'
+    WHERE date = ? AND status = 'booked'
     """,
     (date_iso,),
 ).fetchall()
@@ -102,135 +109,100 @@ booked = {}
 mine = set()
 
 for desk_id, start, end, user_name, uid in rows:
+    if desk_id not in DESK_IDS:
+        continue
     s = time.fromisoformat(start)
     e = time.fromisoformat(end)
     for slot in SLOTS:
         if s <= slot < e:
-            key = f"{desk_id}_{slot.strftime('%H:%M')}"
-            booked[key] = f"{user_name} ({start}–{end})"
+            booked[(desk_id, slot)] = user_name
             if uid == st.session_state.user_id:
-                mine.add(key)
+                mine.add((desk_id, slot))
 
 # =====================================================
-# LEGEND
+# INLINE LEGEND (NO LABEL)
 # =====================================================
 st.markdown("""
-**Legend**  
-⬜ Available 🟦 Your booking 🟥 Booked ⬛ Past
-""")
+<div style="display:flex; gap:20px; margin-bottom:15px;">
+  <div>⬜ Available</div>
+  <div style="color:#009fdf;">■ Your booking</div>
+  <div style="color:#c0392b;">■ Booked</div>
+  <div style="color:#555;">■ Past</div>
+</div>
+""", unsafe_allow_html=True)
 
 # =====================================================
-# PAYLOAD
+# GRID CSS
+# =====================================================
+st.markdown("""
+<style>
+.grid {
+    display: grid;
+    grid-template-columns: 90px repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+    align-items: center;
+}
+.time {
+    font-weight: 600;
+    opacity: 0.8;
+}
+.cell {
+    height: 44px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+}
+.available { background: #ffffff; }
+.own { background: #009fdf; color: white; cursor: not-allowed; }
+.booked { background: #c0392b; color: white; cursor: not-allowed; }
+.past { background: #2c2c2c; cursor: not-allowed; }
+.selected { outline: 3px solid #009fdf; }
+</style>
+""", unsafe_allow_html=True)
+
+# =====================================================
+# BUILD JS GRID
 # =====================================================
 payload = {
     "desks": DESK_IDS,
     "desk_names": DESK_NAMES,
     "times": [t.strftime("%H:%M") for t in SLOTS],
     "selected": st.session_state.selected_cells,
-    "booked": booked,
-    "mine": list(mine),
-    "past": [
-        f"{d}_{t.strftime('%H:%M')}"
-        for d in DESK_IDS
-        for t in SLOTS
-        if is_past(t)
-    ],
+    "booked": {f"{d}_{t.strftime('%H:%M')}": booked[(d, t)] for (d, t) in booked},
+    "mine": [f"{d}_{t.strftime('%H:%M')}" for (d, t) in mine],
+    "past": [f"{d}_{t.strftime('%H:%M')}" for d in DESK_IDS for t in SLOTS if is_past(t)],
 }
 
-payload_json = json.dumps(payload)
-
-# =====================================================
-# HTML GRID (NO INTERNAL SCROLL, CLICK FIXED)
-# =====================================================
-result = st.components.v1.html(
-f"""
-<!DOCTYPE html>
-<html>
-<head>
-<script src="https://cdn.jsdelivr.net/npm/@streamlit/component-lib"></script>
-<style>
-body {{
-  margin: 0;
-  font-family: sans-serif;
-  color: #e5e7eb;
-}}
-
-.grid {{
-  display: grid;
-  grid-template-columns: 90px repeat({len(DESK_IDS)}, 1fr);
-  gap: 10px;
-  align-items: center;
-}}
-
-.header {{
-  font-weight: 600;
-  text-align: center;
-  padding: 6px 0;
-}}
-
-.time {{
-  font-weight: 600;
-  text-align: right;
-  padding-right: 10px;
-}}
-
-.cell {{
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  cursor: pointer;
-  position: relative;
-}}
-
-.available {{ background: #ffffff; }}
-.available:hover {{ background: #f3f4f6; }}
-
-.selected,
-.own {{ background: #009fdf; }}
-
-.booked {{ background: #b91c1c; cursor: not-allowed; }}
-.past {{ background: #1f2937; cursor: not-allowed; }}
-
-.cell[data-tooltip]:hover::after {{
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 120%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #111827;
-  color: white;
-  padding: 6px 8px;
-  font-size: 12px;
-  border-radius: 6px;
-  white-space: nowrap;
-}}
-</style>
-</head>
-
-<body>
-
+html = f"""
 <div class="grid" id="grid"></div>
 
 <script>
-const data = {payload_json};
+const data = {json.dumps(payload)};
 const grid = document.getElementById("grid");
+
 let selected = new Set(data.selected);
 let dragging = false;
 
-document.addEventListener("mousedown", () => dragging = true);
-document.addEventListener("mouseup", () => dragging = false);
+function cellClass(key) {{
+  if (data.mine.includes(key)) return "cell own";
+  if (data.booked[key]) return "cell booked";
+  if (data.past.includes(key)) return "cell past";
+  return "cell available";
+}}
 
-// HEADER
-grid.appendChild(document.createElement("div"));
-data.desks.forEach(d => {{
-  const h = document.createElement("div");
-  h.className = "header";
-  h.innerText = data.desk_names[d];
-  grid.appendChild(h);
-}});
+function toggle(key, el) {{
+  if (!el.classList.contains("available")) return;
+  if (selected.has(key)) {{
+    selected.delete(key);
+    el.classList.remove("selected");
+  }} else {{
+    selected.add(key);
+    el.classList.add("selected");
+  }}
+  window.parent.postMessage({{selected: Array.from(selected)}}, "*");
+}}
 
-// GRID
-data.times.forEach(time => {{
+Object.values(data.times).forEach(time => {{
   const t = document.createElement("div");
   t.className = "time";
   t.innerText = time;
@@ -238,45 +210,25 @@ data.times.forEach(time => {{
 
   data.desks.forEach(desk => {{
     const key = desk + "_" + time;
-    const cell = document.createElement("div");
-    cell.classList.add("cell");
+    const el = document.createElement("div");
+    el.className = cellClass(key);
+    el.title = data.booked[key] ? "Booked by " + data.booked[key] : "";
 
-    if (data.booked[key]) {{
-      cell.classList.add("booked");
-      cell.dataset.tooltip = data.booked[key];
-    }}
-    else if (data.mine.includes(key)) cell.classList.add("own");
-    else if (data.past.includes(key)) cell.classList.add("past");
-    else cell.classList.add("available");
+    if (selected.has(key)) el.classList.add("selected");
 
-    if (selected.has(key)) cell.classList.add("selected");
+    el.onmousedown = () => {{ dragging = true; toggle(key, el); }};
+    el.onmouseover = () => {{ if (dragging) toggle(key, el); }};
+    el.onmouseup = () => dragging = false;
 
-    if (cell.classList.contains("available") || cell.classList.contains("selected")) {{
-      cell.addEventListener("mousedown", () => toggle(key, cell));
-      cell.addEventListener("mouseover", () => dragging && toggle(key, cell));
-    }}
-
-    grid.appendChild(cell);
+    grid.appendChild(el);
   }});
 }});
 
-function toggle(key, cell) {{
-  if (selected.has(key)) {{
-    selected.delete(key);
-    cell.classList.remove("selected");
-  }} else {{
-    selected.add(key);
-    cell.classList.add("selected");
-  }}
-  Streamlit.setComponentValue({{selected:[...selected]}});
-}}
+document.onmouseup = () => dragging = false;
 </script>
+"""
 
-</body>
-</html>
-""",
-height=1000,
-)
+result = st.components.v1.html(html, height=900)
 
 # =====================================================
 # RECEIVE SELECTION
@@ -285,43 +237,38 @@ if isinstance(result, dict) and "selected" in result:
     st.session_state.selected_cells = result["selected"]
 
 # =====================================================
-# BOOKING SUMMARY + GROUPING
+# BOOKING SUMMARY + CONFIRM
 # =====================================================
 if st.session_state.selected_cells:
-    grouped = {}
-    for k in st.session_state.selected_cells:
-        d, t = k.split("_")
-        grouped.setdefault(int(d), []).append(time.fromisoformat(t))
+    st.markdown("### Booking Summary")
 
-    st.subheader("Booking Summary")
+    slots = sorted(st.session_state.selected_cells)
+    st.write(f"**{len(slots)} slots selected**")
 
-    for desk, times in grouped.items():
-        times.sort()
-        start = times[0]
-        end = (datetime.combine(date.today(), times[-1]) + timedelta(minutes=30)).time()
-        st.markdown(f"**{DESK_NAMES[desk]}** — {start.strftime('%H:%M')}–{end.strftime('%H:%M')}")
-
-    if st.button("Confirm Booking"):
+    if st.button("Confirm booking"):
         conn = get_conn()
         c = conn.cursor()
 
-        for desk, times in grouped.items():
-            times.sort()
-            start = times[0].strftime("%H:%M")
-            end = (datetime.combine(date.today(), times[-1]) + timedelta(minutes=30)).time().strftime("%H:%M")
+        for key in slots:
+            desk_id, t = key.split("_")
+            end = (datetime.combine(date.today(), time.fromisoformat(t)) + timedelta(minutes=30)).strftime("%H:%M")
 
             c.execute(
                 """
                 INSERT INTO bookings (user_id, desk_id, date, start_time, end_time, status)
                 VALUES (?, ?, ?, ?, ?, 'booked')
                 """,
-                (st.session_state.user_id, desk, date_iso, start, end),
+                (st.session_state.user_id, int(desk_id), date_iso, t, end),
             )
 
         conn.commit()
         conn.close()
 
-        log_action("NEW_BOOKING", f"{len(grouped)} desk(s) booked on {date_iso}")
+        log_action(
+            action="NEW_BOOKING",
+            details=f"{len(slots)} slots booked on {date_iso}",
+        )
+
         st.session_state.selected_cells = []
         st.success("Booking confirmed.")
         st.rerun()
