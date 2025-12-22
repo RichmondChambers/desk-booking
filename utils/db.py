@@ -33,6 +33,19 @@ def init_db():
         )
 
     # ---------------------------------------------------
+    # DESKS TABLE
+    # ---------------------------------------------------
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS desks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            location TEXT,
+            is_active INTEGER DEFAULT 1,
+            admin_only INTEGER DEFAULT 0
+        )
+    """)
+
+    # ---------------------------------------------------
     # BOOKINGS TABLE
     # ---------------------------------------------------
     c.execute("""
