@@ -3,299 +3,154 @@ from datetime import datetime, date, time, timedelta
 from utils.db import get_conn
 from utils.audit import audit_log
 
-
-# =====================================================
-# PAGE SETUP
-# =====================================================
 st.title("Book a Desk")
 
-
-# =====================================================
-# SESSION STATE (AUTH-SAFE)
-# =====================================================
-st.session_state.setdefault("user_id", None)
-st.session_state.setdefault("user_email", None)
-st.session_state.setdefault("user_name", None)
-st.session_state.setdefault("role", "user")
-st.session_state.setdefault("can_book", 1)
-
-st.session_state.setdefault("selected_desk", None)
+# ---------------------------------------------------
+# SESSION STATE SAFETY
+# ---------------------------------------------------
 st.session_state.setdefault("selection", [])
+st.session_state.setdefault("selected_desk", None)
 
-# -----------------------------------------------------
-# AUTHENTICATE ONCE (STREAMLIT CLOUD SAFE)
-# -----------------------------------------------------
+# ---------------------------------------------------
+# VALIDATE SESSION
+# ---------------------------------------------------
 if st.session_state.user_id is None:
+    st.info("Loading user session…")
+    st.stop()
 
-    user = st.experimental_user  # ✅ CORRECT OBJECT
-
-    if user is None:
-        st.error("Authentication unavailable. Please refresh.")
-        st.stop()
-
-    # IMPORTANT: only check is_authenticated on experimental_user
-    if not getattr(user, "is_authenticated", False):
-        st.info("Please sign in to use the desk booking system.")
-        st.stop()
-
-    email = user.email.lower()
-    name = user.name or email.split("@")[0]
-
-    conn = get_conn()
-    c = conn.cursor()
-
-    row = c.execute(
-        "SELECT id, name, role, can_book FROM users WHERE email=?",
-        (email,),
-    ).fetchone()
-
-    if not row:
-        c.execute(
-            "INSERT INTO users (name, email, role, can_book) VALUES (?, ?, 'user', 1)",
-            (name, email),
-        )
-        conn.commit()
-        row = c.execute(
-            "SELECT id, name, role, can_book FROM users WHERE email=?",
-            (email,),
-        ).fetchone()
-
-    conn.close()
-
-    st.session_state.user_id = row[0]
-    st.session_state.user_name = row[1]
-    st.session_state.role = row[2]
-    st.session_state.can_book = row[3]
-    st.session_state.user_email = email
-
-
-# -----------------------------------------------------
-# PERMISSION CHECK
-# -----------------------------------------------------
 if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
-is_admin = st.session_state.role == "admin"
+# ---------------------------------------------------
+# DATE SELECTION (UK FORMAT)
+# ---------------------------------------------------
+selected_date = st.date_input(
+    "Select date",
+    format="DD/MM/YYYY"
+)
 
-
-# =====================================================
-# DATE SELECTION (UK FORMAT, NO WEEKENDS)
-# =====================================================
-date_choice = st.date_input("Select date")
-st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
-
-if date_choice < date.today():
-    st.error("Bookings cannot be made for past dates.")
+# Disable weekends
+if selected_date.weekday() >= 5:
+    st.warning("Desk booking is not available on weekends.")
     st.stop()
 
-if date_choice.weekday() >= 5:
-    st.error("Bookings cannot be made on weekends.")
-    st.stop()
-
-date_iso = date_choice.strftime("%Y-%m-%d")
-
-
-# =====================================================
-# TIME GRID CONFIG (09:00–18:00)
-# =====================================================
-START_HOUR = 9
-END_HOUR = 18
+# ---------------------------------------------------
+# TIME SLOTS (09:00–18:00)
+# ---------------------------------------------------
+START = time(9, 0)
+END = time(18, 0)
 SLOT_MINUTES = 30
-DESKS = list(range(1, 16))
 
 def generate_slots():
     slots = []
-    current = datetime.combine(date.today(), time(START_HOUR))
-    end = datetime.combine(date.today(), time(END_HOUR))
+    current = datetime.combine(date.today(), START)
+    end = datetime.combine(date.today(), END)
     while current < end:
         slots.append(current.time())
         current += timedelta(minutes=SLOT_MINUTES)
     return slots
 
-SLOTS = generate_slots()
+time_slots = generate_slots()
+desks = range(1, 16)
 
-
-# =====================================================
-# LOAD BOOKINGS FOR DAY
-# =====================================================
+# ---------------------------------------------------
+# LOAD BOOKINGS
+# ---------------------------------------------------
 conn = get_conn()
 c = conn.cursor()
 
-rows = c.execute(
+bookings = c.execute(
     """
-    SELECT b.desk_id, b.start_time, b.end_time, u.name, u.id
-    FROM bookings b
-    JOIN users u ON u.id = b.user_id
-    WHERE b.date = ?
-      AND b.status = 'booked'
+    SELECT desk_id, start_time, end_time, user_id
+    FROM bookings
+    WHERE date=? AND status='booked'
     """,
-    (date_iso,),
+    (selected_date.strftime("%Y-%m-%d"),),
 ).fetchall()
 
 conn.close()
 
-booked = {}
-own = set()
+occupied = {}
+for desk_id, start, end, uid in bookings:
+    occupied.setdefault(desk_id, []).append((start, end, uid))
 
-for desk, start, end, name, uid in rows:
-    s = time.fromisoformat(start)
-    e = time.fromisoformat(end)
-    for slot in SLOTS:
-        if s <= slot < e:
-            booked[(desk, slot)] = f"{name} ({start}–{end})"
-            if uid == st.session_state.user_id:
-                own.add((desk, slot))
-
-
-# =====================================================
-# HANDLE CLICK / DRAG (QUERY PARAMS)
-# =====================================================
-params = st.query_params
-
-if "desk" in params and "slot" in params:
-    clicked_desk = int(params["desk"])
-    clicked_slot = time.fromisoformat(params["slot"])
-
-    if st.session_state.selected_desk in (None, clicked_desk):
-        st.session_state.selected_desk = clicked_desk
-        if clicked_slot not in st.session_state.selection:
-            st.session_state.selection.append(clicked_slot)
-            st.session_state.selection.sort()
-
-    st.query_params.clear()
-    st.rerun()
-
-
-# =====================================================
-# HELPERS
-# =====================================================
-def is_past(slot):
-    if date_choice != date.today():
-        return False
-    return datetime.combine(date.today(), slot) < datetime.now()
-
-
-# =====================================================
-# CSS + JS (CLICK + DRAG ENABLED)
-# =====================================================
+# ---------------------------------------------------
+# GRID STYLES
+# ---------------------------------------------------
 st.markdown("""
 <style>
-.grid {
-    display: grid;
-    grid-template-columns: 80px repeat(15, 1fr);
-    gap: 6px;
-}
-
-.grid a {
-    pointer-events: auto !important;
-    display: block;
-}
-
+.grid { display: grid; grid-template-columns: 80px repeat(15, 1fr); gap: 6px; }
 .cell {
-    height: 34px;
+    height: 32px;
     border-radius: 6px;
-    border: 1px solid #444;
-    cursor: pointer;
+    background: #1f2937;
+    border: 1px solid #374151;
 }
-
-.available { background:#1e3a2f; }
-.booked { background:#4a1f1f; cursor:not-allowed; }
-.own { background:#1f3a4a; }
-.selected { background:#2563eb; }
-.past { background:#2a2a2a; cursor:not-allowed; }
-
-.header {
-    font-weight:600;
-    text-align:center;
-}
-
-.time {
-    padding-top:6px;
-    font-weight:500;
-}
-
-a {
-    text-decoration:none;
-    color:inherit;
-}
+.available:hover { background: #2563eb; cursor: pointer; }
+.booked { background: #14532d; }
+.mine { background: #1d4ed8; }
+.selected { outline: 2px solid #3b82f6; }
+.time { color: #9ca3af; font-size: 14px; }
 </style>
-
-<script>
-let isDragging = false;
-
-document.addEventListener("mousedown", () => isDragging = true);
-document.addEventListener("mouseup", () => isDragging = false);
-
-document.addEventListener("mouseover", (e) => {
-    if (!isDragging) return;
-    const link = e.target.closest("a");
-    if (link) window.location = link.href;
-});
-</script>
 """, unsafe_allow_html=True)
 
-
-# =====================================================
-# RENDER GRID
-# =====================================================
+# ---------------------------------------------------
+# GRID RENDER
+# ---------------------------------------------------
 st.subheader("Select desk and time range")
 
-html = "<div class='grid'>"
-html += "<div></div>"
+st.markdown('<div class="grid">', unsafe_allow_html=True)
+st.markdown("<div></div>", unsafe_allow_html=True)
 
-for d in DESKS:
-    html += f"<div class='header'>Desk {d}</div>"
+for d in desks:
+    st.markdown(f"<strong>Desk {d}</strong>", unsafe_allow_html=True)
 
-for slot in SLOTS:
-    html += f"<div class='time'>{slot.strftime('%H:%M')}</div>"
+now = datetime.now()
 
-    for desk in DESKS:
-        key = (desk, slot)
-        tooltip = booked.get(key, "Available")
+for t in time_slots:
+    st.markdown(f"<div class='time'>{t.strftime('%H:%M')}</div>", unsafe_allow_html=True)
 
-        if key in own:
-            css = "own"
-        elif key in booked:
-            css = "booked"
-        elif is_past(slot):
-            css = "past"
-        elif desk == st.session_state.selected_desk and slot in st.session_state.selection:
-            css = "selected"
+    for d in desks:
+        slot_dt = datetime.combine(selected_date, t)
+        disabled = selected_date == date.today() and slot_dt <= now
+
+        booked_by = None
+        for s, e, uid in occupied.get(d, []):
+            if s <= t.strftime("%H:%M") < e:
+                booked_by = uid
+
+        css = "cell"
+        if booked_by:
+            css += " mine" if booked_by == st.session_state.user_id else " booked"
+        elif disabled:
+            css += ""
         else:
-            css = "available"
+            css += " available"
 
-        if css in ("booked", "past") and not is_admin:
-            html += f"<div class='cell {css}' title='{tooltip}'></div>"
-        else:
-            html += (
-                f"<a href='?desk={desk}&slot={slot}'>"
-                f"<div class='cell {css}' title='{tooltip}'></div>"
-                f"</a>"
-            )
+        key = f"{d}_{t}"
 
-html += "</div>"
-st.markdown(html, unsafe_allow_html=True)
+        if not booked_by and not disabled:
+            if st.button("", key=key):
+                st.session_state.selected_desk = d
+                st.session_state.selection = [t]
+        st.markdown(f"<div class='{css}'></div>", unsafe_allow_html=True)
 
+st.markdown("</div>", unsafe_allow_html=True)
 
-# =====================================================
+# ---------------------------------------------------
 # CONFIRM BOOKING
-# =====================================================
+# ---------------------------------------------------
 if st.session_state.selection:
-    start = min(st.session_state.selection)
-    end = (
-        datetime.combine(date.today(), max(st.session_state.selection))
-        + timedelta(minutes=SLOT_MINUTES)
-    ).time()
-
     st.success(
-        f"Desk {st.session_state.selected_desk} "
-        f"{start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
+        f"Selected Desk {st.session_state.selected_desk} at "
+        f"{st.session_state.selection[0].strftime('%H:%M')}"
     )
 
     if st.button("Confirm Booking"):
         conn = get_conn()
         c = conn.cursor()
+
         c.execute(
             """
             INSERT INTO bookings
@@ -305,23 +160,21 @@ if st.session_state.selection:
             (
                 st.session_state.user_id,
                 st.session_state.selected_desk,
-                date_iso,
-                start.strftime("%H:%M"),
-                end.strftime("%H:%M"),
+                selected_date.strftime("%Y-%m-%d"),
+                st.session_state.selection[0].strftime("%H:%M"),
+                (datetime.combine(date.today(), st.session_state.selection[0]) + timedelta(minutes=30)).time().strftime("%H:%M"),
             ),
         )
+
         conn.commit()
         conn.close()
 
         audit_log(
             st.session_state.user_email,
             "NEW_BOOKING",
-            f"desk={st.session_state.selected_desk} "
-            f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')} "
-            f"on {date_choice.strftime('%d/%m/%Y')}",
+            f"desk={st.session_state.selected_desk}"
         )
 
         st.success("Booking confirmed.")
-        st.session_state.selection.clear()
-        st.session_state.selected_desk = None
+        st.session_state.selection = []
         st.rerun()
