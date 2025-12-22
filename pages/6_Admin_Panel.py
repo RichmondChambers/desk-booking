@@ -1,7 +1,10 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
+
 from utils.db import get_conn
 from utils.permissions import require_admin
+from utils.audit import log_action
 
 st.set_page_config(page_title="Admin Panel", layout="wide")
 
@@ -25,6 +28,8 @@ users = c.execute(
     ORDER BY email
     """
 ).fetchall()
+
+conn.close()
 
 # ---------------------------------------------------
 # USER MANAGEMENT
@@ -51,6 +56,11 @@ for user_id, name, email, role, can_book in users:
                     key=f"remove_admin_{user_id}",
                     disabled=is_self,
                 ):
+                    log_action(
+                        action="REMOVE_ADMIN",
+                        details=f"Removed admin role from {email}",
+                    )
+
                     conn = get_conn()
                     conn.execute(
                         "UPDATE users SET role='user' WHERE id=?",
@@ -58,13 +68,19 @@ for user_id, name, email, role, can_book in users:
                     )
                     conn.commit()
                     conn.close()
-                    st.experimental_rerun()
+
+                    st.rerun()
             else:
                 if st.button(
                     "Make admin",
                     key=f"make_admin_{user_id}",
                     disabled=is_self,
                 ):
+                    log_action(
+                        action="PROMOTE_TO_ADMIN",
+                        details=f"Promoted {email} to admin",
+                    )
+
                     conn = get_conn()
                     conn.execute(
                         "UPDATE users SET role='admin' WHERE id=?",
@@ -72,7 +88,8 @@ for user_id, name, email, role, can_book in users:
                     )
                     conn.commit()
                     conn.close()
-                    st.experimental_rerun()
+
+                    st.rerun()
 
             # ---- BOOKING PERMISSION TOGGLE ----
             toggle_label = "Disable booking" if can_book else "Enable booking"
@@ -82,6 +99,11 @@ for user_id, name, email, role, can_book in users:
                 key=f"toggle_booking_{user_id}",
                 disabled=is_self,
             ):
+                log_action(
+                    action="TOGGLE_CAN_BOOK",
+                    details=f"{'Disabled' if can_book else 'Enabled'} booking for {email}",
+                )
+
                 conn = get_conn()
                 conn.execute(
                     "UPDATE users SET can_book=? WHERE id=?",
@@ -89,7 +111,8 @@ for user_id, name, email, role, can_book in users:
                 )
                 conn.commit()
                 conn.close()
-                st.experimental_rerun()
+
+                st.rerun()
 
 st.divider()
 
@@ -98,13 +121,15 @@ st.divider()
 # ---------------------------------------------------
 st.subheader("All Bookings")
 
-bookings = c.execute(
+conn = get_conn()
+bookings = conn.execute(
     """
     SELECT id, user_id, desk_id, date, start_time, end_time, status, checked_in
     FROM bookings
     ORDER BY date DESC
     """
 ).fetchall()
+conn.close()
 
 df_bookings = pd.DataFrame(
     bookings,
@@ -122,4 +147,32 @@ df_bookings = pd.DataFrame(
 
 st.dataframe(df_bookings, use_container_width=True)
 
+st.divider()
+
+# ---------------------------------------------------
+# AUDIT LOG (READ-ONLY)
+# ---------------------------------------------------
+st.subheader("Audit Log")
+
+conn = get_conn()
+logs = conn.execute(
+    """
+    SELECT timestamp, email, action, details
+    FROM audit_log
+    ORDER BY timestamp DESC
+    LIMIT 200
+    """
+).fetchall()
 conn.close()
+
+df_logs = pd.DataFrame(
+    logs,
+    columns=[
+        "Timestamp",
+        "Actor",
+        "Action",
+        "Details",
+    ],
+)
+
+st.dataframe(df_logs, use_container_width=True)
