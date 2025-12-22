@@ -41,8 +41,6 @@ date_iso = selected_date.strftime("%Y-%m-%d")
 # --------------------------------------------------
 # LOAD DESKS
 # --------------------------------------------------
-role = st.session_state.get("role", "user")
-
 conn = get_conn()
 desks = conn.execute(
     """
@@ -52,12 +50,12 @@ desks = conn.execute(
       AND (admin_only = 0 OR ? = 'admin')
     ORDER BY id
     """,
-    (role,),
+    (st.session_state.role,),
 ).fetchall()
 conn.close()
 
 if not desks:
-    st.error("No desks available.")
+    st.warning("No desks available.")
     st.stop()
 
 DESK_IDS = [d[0] for d in desks]
@@ -74,7 +72,7 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur <= end_dt:
+while cur <= end_dt:  # include 18:00
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -94,13 +92,13 @@ rows = conn.execute(
     SELECT b.desk_id, b.start_time, b.end_time, u.name, u.id
     FROM bookings b
     JOIN users u ON u.id = b.user_id
-    WHERE date = ? AND status = 'booked'
+    WHERE date=? AND status='booked'
     """,
     (date_iso,),
 ).fetchall()
 conn.close()
 
-booked = {}  # key -> user name
+booked = {}   # key -> user name
 mine = set()
 
 for desk_id, start, end, user_name, uid in rows:
@@ -139,7 +137,7 @@ st.markdown(
 )
 
 # --------------------------------------------------
-# GRID + INTERACTION (STABLE VERSION)
+# GRID + INTERACTION
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -279,3 +277,44 @@ document.onmouseup = () => dragging = false;
 """ % (len(DESK_IDS), json.dumps(payload))
 
 st.components.v1.html(html, height=1400)
+
+# --------------------------------------------------
+# BOOKING SUMMARY + CONFIRM (WORKING)
+# --------------------------------------------------
+if st.session_state.selected_cells:
+    st.markdown("### Booking Summary")
+    st.write(f"{len(st.session_state.selected_cells)} slots selected")
+
+    if st.button("Confirm booking"):
+        conn = get_conn()
+        try:
+            c = conn.cursor()
+            for key in st.session_state.selected_cells:
+                desk_id, t = key.split("_")
+                end = (
+                    datetime.combine(selected_date, time.fromisoformat(t))
+                    + timedelta(minutes=30)
+                ).strftime("%H:%M")
+
+                c.execute(
+                    """
+                    INSERT INTO bookings (user_id, desk_id, date, start_time, end_time, status)
+                    VALUES (?, ?, ?, ?, ?, 'booked')
+                    """,
+                    (st.session_state.user_id, int(desk_id), date_iso, t, end),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+        log_action(
+            action="NEW_BOOKING",
+            details=f"{len(st.session_state.selected_cells)} slots on {date_iso}",
+        )
+
+        st.session_state.selected_cells = []
+        st.success("Booking confirmed.")
+        st.rerun()
