@@ -120,9 +120,6 @@ payload = {
 
 payload_json = json.dumps(payload)
 
-# -----------------------------------------------------
-# FULL HTML GRID (THIS IS THE KEY FIX)
-# -----------------------------------------------------
 result = st.components.v1.html(
 f"""
 <!DOCTYPE html>
@@ -132,25 +129,25 @@ f"""
 body {{
     margin: 0;
     font-family: sans-serif;
-}}
-
-.header {{
-    display: grid;
-    grid-template-columns: 90px repeat(3, 1fr);
-    margin-bottom: 10px;
-    font-weight: 600;
-    text-align: center;
+    color: #e5e7eb;
 }}
 
 .grid {{
     display: grid;
     grid-template-columns: 90px repeat(3, 1fr);
     gap: 10px;
+    align-items: center;
+}}
+
+.header {{
+    font-weight: 600;
+    text-align: center;
 }}
 
 .time {{
-    padding-top: 6px;
     font-weight: 600;
+    text-align: right;
+    padding-right: 10px;
 }}
 
 .cell {{
@@ -158,6 +155,7 @@ body {{
     border-radius: 8px;
     border: 1px solid #e5e7eb;
     cursor: pointer;
+    position: relative;
 }}
 
 .available {{ background: #ffffff; }}
@@ -181,18 +179,12 @@ body {{
     font-size: 12px;
     border-radius: 6px;
     white-space: nowrap;
+    z-index: 10;
 }}
 </style>
 </head>
 
 <body>
-
-<div class="header">
-  <div></div>
-  <div>Desk 1</div>
-  <div>Desk 2</div>
-  <div>Desk 3</div>
-</div>
 
 <div class="grid" id="grid"></div>
 
@@ -202,6 +194,16 @@ const grid = document.getElementById("grid");
 let selected = new Set(data.selected);
 let dragging = false;
 
+// ---- HEADER ROW ----
+grid.appendChild(document.createElement("div"));
+["Desk 1","Desk 2","Desk 3"].forEach(h => {{
+  const d = document.createElement("div");
+  d.className = "header";
+  d.innerText = h;
+  grid.appendChild(d);
+}});
+
+// ---- TIME ROWS ----
 data.times.forEach(time => {{
   const t = document.createElement("div");
   t.className = "time";
