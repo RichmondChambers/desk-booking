@@ -1,7 +1,56 @@
+from utils.auth import require_login
+import requests
+from google_auth_oauthlib.flow import Flow
+
 import streamlit as st
 from utils.db import init_db, get_conn
 
 st.set_page_config(page_title="Desk Booking", layout="wide")
+
+# ---------------------------------------------------
+# HANDLE OAUTH CALLBACK
+# ---------------------------------------------------
+query_params = st.query_params
+if "code" in query_params and "oauth_email" not in st.session_state:
+
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": st.secrets["oauth"]["client_id"],
+                "client_secret": st.secrets["oauth"]["client_secret"],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
+            }
+        },
+        scopes=["openid", "email", "profile"],
+        redirect_uri=st.secrets["oauth"]["redirect_uri"],
+    )
+
+    flow.fetch_token(code=query_params["code"])
+    credentials = flow.credentials
+
+    userinfo = requests.get(
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        headers={"Authorization": f"Bearer {credentials.token}"},
+    ).json()
+
+    email = userinfo.get("email", "").lower()
+    name = userinfo.get("name")
+
+    if not email.endswith("@richmondchambers.com"):
+        st.error("Access restricted to Richmond Chambers staff.")
+        st.stop()
+
+    st.session_state["oauth_email"] = email
+    st.session_state["oauth_name"] = name
+    st.query_params.clear()
+
+# ---------------------------------------------------
+# REQUIRE LOGIN
+# ---------------------------------------------------
+require_login()
+
 
 # ---------------------------------------------------
 # INITIALISE DATABASE
