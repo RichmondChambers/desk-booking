@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import date
 from utils.db import get_conn
 from utils.audit import audit_log
+from utils.dates import uk_date
 
 
 # ---------------------------------------------------
@@ -82,7 +83,7 @@ else:
             st.markdown(
                 f"""
                 **Desk {desk_id}**  
-                • Date: **{b_date}**  
+                • Date: **{uk_date(b_date)}**  
                 • Time: **{start}–{end}**  
                 • Status: **{status}**  
                 • Checked in: **{'Yes' if checked_in else 'No'}**
@@ -130,7 +131,7 @@ else:
         st.markdown(
             f"""
             **Desk {desk_id}**  
-            • Date: **{b_date}**  
+            • Date: **{uk_date(b_date)}**  
             • Time: **{start}–{end}**  
             • Status: **{status}**  
             • Checked in: **{'Yes' if checked_in else 'No'}**
