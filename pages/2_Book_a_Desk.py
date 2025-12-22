@@ -120,9 +120,9 @@ st.markdown(
     """
 <div style="display:flex; gap:24px; margin-bottom:16px; font-size:14px;">
   <div style="color:#ffffff;">⬜ Available</div>
-  <div style="color:#009fdf;">■ Your booking</div>
-  <div style="color:#c0392b;">■ Booked</div>
-  <div style="color:#666666;">■ Past</div>
+  <div style="color:#009fdf;">⬜ Your booking</div>
+  <div style="color:#c0392b;">⬜ Booked</div>
+  <div style="color:#666666;">⬜ Past</div>
 </div>
 """,
     unsafe_allow_html=True,
