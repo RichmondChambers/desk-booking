@@ -21,9 +21,9 @@ st.session_state.setdefault("user_name", "")
 st.session_state.setdefault("role", "user")
 st.session_state.setdefault("can_book", 1)
 
+st.session_state.setdefault("selected_desk", None)
 st.session_state.setdefault("selection_start", None)
 st.session_state.setdefault("selection_end", None)
-st.session_state.setdefault("selected_desk", None)
 
 if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
@@ -44,7 +44,7 @@ c = conn.cursor()
 
 
 # ===================================================
-# DATE
+# DATE SELECTION
 # ===================================================
 date_choice = st.date_input("Select date")
 st.caption(f"Selected date: {uk_date(date_choice)}")
@@ -72,7 +72,7 @@ END_HOUR = 18
 SLOT_MINUTES = 30
 DESKS = range(1, 16)
 
-def time_slots():
+def generate_slots():
     slots = []
     current = time(START_HOUR, 0)
     while current < time(END_HOUR, 0):
@@ -84,11 +84,11 @@ def time_slots():
         current = end
     return slots
 
-SLOTS = time_slots()
+SLOTS = generate_slots()
 
 
 # ===================================================
-# EXISTING BOOKINGS
+# FETCH EXISTING BOOKINGS
 # ===================================================
 rows = c.execute(
     """
@@ -120,10 +120,11 @@ for desk, start, end, name, uid in rows:
 # ===================================================
 st.subheader("Select desk and time range")
 
-header = st.columns([1] + [1]*len(DESKS))
+# Header
+header = st.columns([1] + [1] * len(DESKS))
 header[0].markdown("**Time**")
 for i, d in enumerate(DESKS):
-    header[i+1].markdown(f"**Desk {d}**")
+    header[i + 1].markdown(f"**Desk {d}**")
 
 def in_selected_range(desk, slot):
     if (
@@ -133,12 +134,13 @@ def in_selected_range(desk, slot):
     ):
         return False
 
-    s = min(st.session_state.selection_start, st.session_state.selection_end)
-    e = max(st.session_state.selection_start, st.session_state.selection_end)
-    return s <= slot <= e
+    start = min(st.session_state.selection_start, st.session_state.selection_end)
+    end = max(st.session_state.selection_start, st.session_state.selection_end)
+    return start <= slot <= end
+
 
 for slot_start, slot_end in SLOTS:
-    row = st.columns([1] + [1]*len(DESKS))
+    row = st.columns([1] + [1] * len(DESKS))
     row[0].markdown(slot_start.strftime("%H:%M"))
 
     for i, desk in enumerate(DESKS):
@@ -147,19 +149,24 @@ for slot_start, slot_end in SLOTS:
         is_own = key in own
         selected = in_selected_range(desk, slot_start)
 
-        disabled = booked_info and not is_admin and not is_own
+        # IMPORTANT: disabled MUST be boolean
+        disabled = (
+            (booked_info is not None)
+            and (not is_admin)
+            and (not is_own)
+        )
 
         if selected:
-            style = "🟦"
+            symbol = "🟦"
         elif is_own:
-            style = "🟩"
+            symbol = "🟩"
         elif booked_info:
-            style = "🟥"
+            symbol = "🟥"
         else:
-            style = "⬜"
+            symbol = "⬜"
 
-        if row[i+1].button(
-            style,
+        if row[i + 1].button(
+            symbol,
             key=f"{desk}_{slot_start}",
             help=booked_info or "Available",
             disabled=disabled,
@@ -168,7 +175,6 @@ for slot_start, slot_end in SLOTS:
                 st.warning("You can only select one desk.")
             else:
                 st.session_state.selected_desk = desk
-
                 if not st.session_state.selection_start:
                     st.session_state.selection_start = slot_start
                     st.session_state.selection_end = slot_start
@@ -177,20 +183,24 @@ for slot_start, slot_end in SLOTS:
 
 
 # ===================================================
-# CONFIRMATION
+# CONFIRM BOOKING
 # ===================================================
 if st.session_state.selection_start and st.session_state.selection_end:
-    start = min(st.session_state.selection_start, st.session_state.selection_end)
-    end = (
+    start_slot = min(
+        st.session_state.selection_start,
+        st.session_state.selection_end,
+    )
+    end_slot = (
         datetime.combine(date.today(), max(
             st.session_state.selection_start,
-            st.session_state.selection_end
+            st.session_state.selection_end,
         )) + timedelta(minutes=SLOT_MINUTES)
     ).time()
 
     st.success(
         f"Desk {st.session_state.selected_desk} "
-        f"from {start.strftime('%H:%M')} to {end.strftime('%H:%M')}"
+        f"from {start_slot.strftime('%H:%M')} "
+        f"to {end_slot.strftime('%H:%M')}"
     )
 
     if st.button("Confirm Booking"):
@@ -204,8 +214,8 @@ if st.session_state.selection_start and st.session_state.selection_end:
                 st.session_state.user_id,
                 st.session_state.selected_desk,
                 date_iso,
-                start.strftime("%H:%M"),
-                end.strftime("%H:%M"),
+                start_slot.strftime("%H:%M"),
+                end_slot.strftime("%H:%M"),
             ),
         )
         conn.commit()
@@ -214,7 +224,8 @@ if st.session_state.selection_start and st.session_state.selection_end:
             st.session_state.user_email,
             "NEW_BOOKING",
             f"desk={st.session_state.selected_desk} "
-            f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')} "
+            f"{start_slot.strftime('%H:%M')}-"
+            f"{end_slot.strftime('%H:%M')} "
             f"on {uk_date(date_choice)}",
         )
 
