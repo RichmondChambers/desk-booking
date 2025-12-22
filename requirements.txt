@@ -1,6 +1,5 @@
 streamlit
 qrcode[pil]
-
 google-auth
 google-auth-oauthlib
 requests
