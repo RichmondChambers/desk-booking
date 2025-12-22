@@ -11,7 +11,7 @@ st.title("Book a Desk")
 
 
 # =====================================================
-# SESSION STATE (ROBUST LAZY INITIALISATION)
+# SESSION STATE (AUTH-SAFE, MULTIPAGE-CORRECT)
 # =====================================================
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", None)
@@ -22,12 +22,14 @@ st.session_state.setdefault("can_book", 1)
 st.session_state.setdefault("selected_desk", None)
 st.session_state.setdefault("selection", [])
 
-# ---- Bootstrap user if not already initialised ----
+# -----------------------------------------------------
+# AUTHENTICATE ONLY ONCE PER SESSION
+# -----------------------------------------------------
 if st.session_state.user_id is None:
     user = st.experimental_user
 
-    if not user or not user.is_authenticated:
-        st.error("Please sign in to use the desk booking system.")
+    if user is None or not user.is_authenticated:
+        st.info("Please sign in to use the desk booking system.")
         st.stop()
 
     email = user.email.lower()
@@ -60,7 +62,10 @@ if st.session_state.user_id is None:
     st.session_state.can_book = row[3]
     st.session_state.user_email = email
 
-# ---- Permission check ----
+
+# -----------------------------------------------------
+# PERMISSION CHECK
+# -----------------------------------------------------
 if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
@@ -69,7 +74,7 @@ is_admin = st.session_state.role == "admin"
 
 
 # =====================================================
-# DATE SELECTION
+# DATE SELECTION (UK FORMAT, NO WEEKENDS)
 # =====================================================
 date_choice = st.date_input("Select date")
 st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
@@ -106,7 +111,7 @@ SLOTS = generate_slots()
 
 
 # =====================================================
-# LOAD BOOKINGS
+# LOAD BOOKINGS FOR DAY
 # =====================================================
 conn = get_conn()
 c = conn.cursor()
@@ -138,7 +143,7 @@ for desk, start, end, name, uid in rows:
 
 
 # =====================================================
-# HANDLE CLICK / DRAG EVENTS (QUERY PARAMS)
+# HANDLE CLICK / DRAG (QUERY PARAMS)
 # =====================================================
 params = st.query_params
 
@@ -166,7 +171,7 @@ def is_past(slot):
 
 
 # =====================================================
-# CSS + JS (CLICK + DRAG)
+# CSS + JS (CLICK + DRAG ENABLED)
 # =====================================================
 st.markdown("""
 <style>
@@ -218,15 +223,15 @@ document.addEventListener("mouseup", () => isDragging = false);
 
 document.addEventListener("mouseover", (e) => {
     if (!isDragging) return;
-    const target = e.target.closest("a");
-    if (target) window.location = target.href;
+    const link = e.target.closest("a");
+    if (link) window.location = link.href;
 });
 </script>
 """, unsafe_allow_html=True)
 
 
 # =====================================================
-# GRID RENDER
+# RENDER GRID
 # =====================================================
 st.subheader("Select desk and time range")
 
@@ -236,33 +241,30 @@ html += "<div></div>"
 for d in DESKS:
     html += f"<div class='header'>Desk {d}</div>"
 
-now = datetime.now()
-
 for slot in SLOTS:
     html += f"<div class='time'>{slot.strftime('%H:%M')}</div>"
 
     for desk in DESKS:
         key = (desk, slot)
-        past = is_past(slot)
-        tooltip = booked.get(key, "")
+        tooltip = booked.get(key, "Available")
 
         if key in own:
             css = "own"
         elif key in booked:
             css = "booked"
-        elif past:
+        elif is_past(slot):
             css = "past"
         elif desk == st.session_state.selected_desk and slot in st.session_state.selection:
             css = "selected"
         else:
             css = "available"
 
-        if (css in ("booked", "past")) and not is_admin:
+        if css in ("booked", "past") and not is_admin:
             html += f"<div class='cell {css}' title='{tooltip}'></div>"
         else:
             html += (
                 f"<a href='?desk={desk}&slot={slot}'>"
-                f"<div class='cell {css}' title='{tooltip or 'Available'}'></div>"
+                f"<div class='cell {css}' title='{tooltip}'></div>"
                 f"</a>"
             )
 
