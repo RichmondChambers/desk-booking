@@ -11,60 +11,59 @@ st.title("Book a Desk")
 
 
 # =====================================================
-# SESSION STATE
+# SESSION STATE (SOFT GUARDS ONLY)
 # =====================================================
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", "")
-st.session_state.setdefault("user_name", "")
 st.session_state.setdefault("role", "user")
 st.session_state.setdefault("can_book", 1)
 
 st.session_state.setdefault("selected_desk", None)
 st.session_state.setdefault("selection", [])
 
+is_admin = st.session_state.role == "admin"
+
 if not st.session_state.can_book:
     st.error("You are not permitted to book desks.")
     st.stop()
 
 if st.session_state.user_id is None:
-    st.error("User session not initialised.")
+    st.info("Loading user session…")
     st.stop()
-
-is_admin = st.session_state.role == "admin"
 
 
 # =====================================================
-# DATE SELECTION
+# DATE
 # =====================================================
 date_choice = st.date_input("Select date")
 st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
 
 if date_choice < date.today():
-    st.error("Bookings cannot be made for past dates.")
+    st.error("Cannot book past dates.")
     st.stop()
 
 if date_choice.weekday() >= 5:
-    st.error("Bookings cannot be made on weekends.")
+    st.error("Weekends disabled.")
     st.stop()
 
 date_iso = date_choice.strftime("%Y-%m-%d")
 
 
 # =====================================================
-# TIME GRID CONFIG (09:00–18:00)
+# TIME GRID CONFIG
 # =====================================================
 START_HOUR = 9
 END_HOUR = 18
 SLOT_MINUTES = 30
-DESKS = range(1, 16)
+DESKS = list(range(1, 16))
 
 def generate_slots():
-    slots = []
-    current = datetime.combine(date.today(), time(START_HOUR))
+    t = datetime.combine(date.today(), time(START_HOUR))
     end = datetime.combine(date.today(), time(END_HOUR))
-    while current < end:
-        slots.append(current.time())
-        current += timedelta(minutes=SLOT_MINUTES)
+    slots = []
+    while t < end:
+        slots.append(t.time())
+        t += timedelta(minutes=SLOT_MINUTES)
     return slots
 
 SLOTS = generate_slots()
@@ -103,18 +102,18 @@ for desk, start, end, name, uid in rows:
 
 
 # =====================================================
-# HANDLE CELL CLICKS (QUERY PARAMS)
+# HANDLE CLICK / DRAG EVENTS
 # =====================================================
 params = st.query_params
+
 if "desk" in params and "slot" in params:
-    clicked_desk = int(params["desk"])
-    clicked_slot = time.fromisoformat(params["slot"])
+    desk = int(params["desk"])
+    slot = time.fromisoformat(params["slot"])
 
-    if st.session_state.selected_desk in (None, clicked_desk):
-        st.session_state.selected_desk = clicked_desk
-
-        if clicked_slot not in st.session_state.selection:
-            st.session_state.selection.append(clicked_slot)
+    if st.session_state.selected_desk in (None, desk):
+        st.session_state.selected_desk = desk
+        if slot not in st.session_state.selection:
+            st.session_state.selection.append(slot)
             st.session_state.selection.sort()
 
     st.query_params.clear()
@@ -131,7 +130,7 @@ def is_past(slot):
 
 
 # =====================================================
-# CSS
+# CSS + JS (DRAG SUPPORT)
 # =====================================================
 st.markdown("""
 <style>
@@ -159,21 +158,24 @@ st.markdown("""
 .selected { background:#2563eb; }
 .past { background:#2a2a2a; cursor:not-allowed; }
 
-.header {
-    font-weight:600;
-    text-align:center;
-}
+.header { font-weight:600; text-align:center; }
+.time { padding-top:6px; }
 
-.time {
-    padding-top:6px;
-    font-weight:500;
-}
-
-a {
-    text-decoration:none;
-    color:inherit;
-}
+a { text-decoration:none; color:inherit; }
 </style>
+
+<script>
+let isDragging = false;
+
+document.addEventListener("mousedown", () => isDragging = true);
+document.addEventListener("mouseup", () => isDragging = false);
+
+document.addEventListener("mouseover", (e) => {
+    if (!isDragging) return;
+    const target = e.target.closest("a");
+    if (target) window.location = target.href;
+});
+</script>
 """, unsafe_allow_html=True)
 
 
@@ -184,6 +186,7 @@ st.subheader("Select desk and time range")
 
 html = "<div class='grid'>"
 html += "<div></div>"
+
 for d in DESKS:
     html += f"<div class='header'>Desk {d}</div>"
 
@@ -195,10 +198,7 @@ for slot in SLOTS:
     for desk in DESKS:
         key = (desk, slot)
         past = is_past(slot)
-        tooltip = ""
-
-        if key in booked:
-            tooltip = booked[key]
+        tooltip = booked.get(key, "")
 
         if key in own:
             css = "own"
