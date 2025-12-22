@@ -114,7 +114,7 @@ for desk_id, start, end, user_name, uid in rows:
                 mine.add(key)
 
 # --------------------------------------------------
-# INLINE LEGEND (unchanged; NOT implementing (2) here)
+# INLINE LEGEND (unchanged)
 # --------------------------------------------------
 st.markdown(
     """
@@ -130,8 +130,7 @@ st.markdown(
 
 # --------------------------------------------------
 # GRID HTML + JS
-# (1) Font set to Streamlit's default via var(--font)
-# (3) Live hover/click/drag info panel
+# Font synced from parent Streamlit app
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -151,9 +150,14 @@ payload = {
 
 html = f"""
 <style>
-/* (1) Force all component text to use Streamlit's default font */
+html, body {{
+  margin: 0;
+  padding: 0;
+  font-family: inherit;
+}}
+
 * {{
-  font-family: var(--font);
+  font-family: inherit;
   box-sizing: border-box;
 }}
 
@@ -210,7 +214,6 @@ html = f"""
   cursor: not-allowed;
 }}
 
-/* (3) Info panel */
 #info {{
   margin-bottom: 12px;
   padding: 10px 14px;
@@ -226,6 +229,20 @@ html = f"""
 <div class="grid" id="grid"></div>
 
 <script>
+// --- Sync font from parent Streamlit app ---
+(function syncStreamlitFont() {{
+  try {{
+    const parentBody = window.parent?.document?.body;
+    if (!parentBody) return;
+
+    const parentFont = window.parent.getComputedStyle(parentBody).fontFamily;
+    if (parentFont) {{
+      document.documentElement.style.fontFamily = parentFont;
+      document.body.style.fontFamily = parentFont;
+    }}
+  }} catch (e) {{}}
+}})();
+
 const data = {json.dumps(payload)};
 const grid = document.getElementById("grid");
 const info = document.getElementById("info");
@@ -233,8 +250,7 @@ const info = document.getElementById("info");
 let selected = new Set(data.selected);
 let dragging = false;
 
-// Helper: human-friendly status
-function statusForCell(el, key) {{
+function statusForCell(key) {{
   if (data.mine.includes(key)) return "Your booking";
   if (data.booked[key]) return "Booked";
   if (data.past.includes(key)) return "Past";
@@ -243,12 +259,8 @@ function statusForCell(el, key) {{
 
 function showInfo(deskId, timeStr, key) {{
   const deskName = data.deskNames[deskId] ?? String(deskId);
-  const status = statusForCell(null, key);
-  let text = `${{data.dateLabel}} · ${{deskName}} · ${{timeStr}} · ${{status}}`;
-
-  if (data.booked[key]) {{
-    text += ` · ${{data.booked[key]}}`;
-  }}
+  let text = `${{data.dateLabel}} · ${{deskName}} · ${{timeStr}} · ${{statusForCell(key)}}`;
+  if (data.booked[key]) text += ` · ${{data.booked[key]}}`;
   info.innerText = text;
 }}
 
@@ -261,7 +273,7 @@ function toggle(key, el) {{
     selected.add(key);
     el.classList.add("selected");
   }}
-  window.parent.postMessage({{selected: Array.from(selected)}}, "*");
+  window.parent.postMessage({{ selected: Array.from(selected) }}, "*");
 }}
 
 // Header row
@@ -285,37 +297,23 @@ data.times.forEach(timeStr => {{
     const c = document.createElement("div");
 
     if (data.mine.includes(key)) c.className = "cell own";
-    else if (data.booked[key]) {{
-      c.className = "cell booked";
-      c.title = "Booked by " + data.booked[key];
-    }}
+    else if (data.booked[key]) c.className = "cell booked";
     else if (data.past.includes(key)) c.className = "cell past";
     else c.className = "cell available";
 
     if (selected.has(key)) c.classList.add("selected");
 
-    // (3) Hover confirmation
-    c.onmouseenter = () => {{
-      showInfo(deskId, timeStr, key);
-    }};
-
-    // Click + drag behaviour
+    c.onmouseenter = () => showInfo(deskId, timeStr, key);
     c.onmousedown = () => {{
-      // Always show info as confirmation, even if non-interactive
       showInfo(deskId, timeStr, key);
-
       if (!c.classList.contains("available")) return;
       dragging = true;
       toggle(key, c);
     }};
-
     c.onmouseover = () => {{
-      // While dragging, toggling on hover, and show info as confirmation
       showInfo(deskId, timeStr, key);
-
       if (dragging) toggle(key, c);
     }};
-
     c.onmouseup = () => dragging = false;
 
     grid.appendChild(c);
@@ -326,7 +324,6 @@ document.onmouseup = () => dragging = false;
 </script>
 """
 
-# IMPORTANT: increased height so 18:00 is always visible
 result = st.components.v1.html(html, height=1400)
 
 # --------------------------------------------------
