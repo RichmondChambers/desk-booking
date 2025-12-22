@@ -1,139 +1,224 @@
 import streamlit as st
 from datetime import datetime, date, time, timedelta
-import json
+from utils.db import get_conn
 
+# =====================================================
+# PAGE SETUP
+# =====================================================
 st.title("Book a Desk")
 
-# ---------------------------------------------------
-# SESSION SAFETY
-# ---------------------------------------------------
-if st.session_state.get("user_id") is None:
-    st.info("Loading user session…")
+# =====================================================
+# SESSION SAFETY (do NOT re-auth here; trust app.py)
+# =====================================================
+st.session_state.setdefault("user_id", None)
+st.session_state.setdefault("user_email", "internal.user@richmondchambers.com")
+st.session_state.setdefault("role", "user")
+st.session_state.setdefault("can_book", 1)
+
+if st.session_state.user_id is None:
+    st.error("User session not initialised. Please start from the home page.")
     st.stop()
 
-# ---------------------------------------------------
-# DATE
-# ---------------------------------------------------
-selected_date = st.date_input(
-    "Select date",
-    format="DD/MM/YYYY"
-)
+if not st.session_state.can_book:
+    st.error("You are not permitted to book desks.")
+    st.stop()
 
-# ---------------------------------------------------
-# TIME SLOTS
-# ---------------------------------------------------
-START = time(9, 0)
-END = time(18, 0)
+is_admin = st.session_state.role == "admin"
+
+# =====================================================
+# DATE SELECTION (UK FORMAT)
+# =====================================================
+date_choice = st.date_input("Select date", format="DD/MM/YYYY")
+st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
+
+if date_choice < date.today():
+    st.error("Bookings cannot be made for past dates.")
+    st.stop()
+
+if date_choice.weekday() >= 5:
+    st.error("Bookings cannot be made on weekends.")
+    st.stop()
+
+date_iso = date_choice.strftime("%Y-%m-%d")
+
+# =====================================================
+# GRID CONFIG (09:00–18:00)
+# =====================================================
+START_HOUR = 9
+END_HOUR = 18
 SLOT_MINUTES = 30
+DESKS = list(range(1, 16))
 
 def generate_slots():
     slots = []
-    cur = datetime.combine(date.today(), START)
-    end = datetime.combine(date.today(), END)
-    while cur < end:
-        slots.append(cur.strftime("%H:%M"))
-        cur += timedelta(minutes=SLOT_MINUTES)
+    current = datetime.combine(date.today(), time(START_HOUR))
+    end = datetime.combine(date.today(), time(END_HOUR))
+    while current < end:
+        slots.append(current.time())
+        current += timedelta(minutes=SLOT_MINUTES)
     return slots
 
-time_slots = generate_slots()
-desks = list(range(1, 16))
+SLOTS = generate_slots()
 
-# ---------------------------------------------------
-# SELECTION STORAGE
-# ---------------------------------------------------
-st.session_state.setdefault("grid_selection", [])
+def is_past(slot):
+    if date_choice != date.today():
+        return False
+    return datetime.combine(date.today(), slot) < datetime.now()
 
-# ---------------------------------------------------
-# HTML GRID
-# ---------------------------------------------------
-grid_payload = {
-    "desks": desks,
-    "times": time_slots,
-    "selection": st.session_state.grid_selection,
+# =====================================================
+# LOAD BOOKINGS FOR THIS DAY
+# =====================================================
+conn = get_conn()
+c = conn.cursor()
+
+rows = c.execute(
+    """
+    SELECT b.desk_id, b.start_time, b.end_time, u.name, u.id
+    FROM bookings b
+    JOIN users u ON u.id = b.user_id
+    WHERE b.date = ?
+      AND b.status = 'booked'
+    """,
+    (date_iso,),
+).fetchall()
+
+conn.close()
+
+booked = {}
+own = set()
+
+for desk, start, end, name, uid in rows:
+    s = time.fromisoformat(start)
+    e = time.fromisoformat(end)
+    for slot in SLOTS:
+        if s <= slot < e:
+            booked[(desk, slot)] = f"{name} ({start}–{end})"
+            if uid == st.session_state.user_id:
+                own.add((desk, slot))
+
+# =====================================================
+# CSS (the “nice look”)
+# =====================================================
+st.markdown(
+    """
+<style>
+.grid {
+  display: grid;
+  grid-template-columns: 90px repeat(15, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-top: 10px;
 }
 
-st.components.v1.html(
-    f"""
-<!DOCTYPE html>
-<html>
-<head>
-<style>
-.grid {{
-  display: grid;
-  grid-template-columns: 80px repeat(15, 1fr);
-  gap: 8px;
-  font-family: sans-serif;
-}}
+.header {
+  font-weight: 600;
+  text-align: center;
+  color: #e5e7eb;
+  font-size: 16px;
+}
 
-.cell {{
-  height: 32px;
-  border-radius: 6px;
-  background: #1f2937;
-  border: 1px solid #374151;
-  cursor: pointer;
-}}
+.time {
+  color: #e5e7eb;
+  font-size: 18px;
+  font-weight: 600;
+}
 
-.cell:hover {{
-  background: #2563eb;
-}}
+.cell {
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(17,24,39,0.55);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
+}
 
-.selected {{
-  background: #1d4ed8 !important;
-}}
+.available {
+  background: rgba(31,41,55,0.55);
+  transition: transform .08s ease, border-color .12s ease, background .12s ease;
+}
 
-.time {{
-  color: #9ca3af;
+.available:hover {
+  border-color: rgba(255,255,255,0.30);
+  transform: translateY(-1px);
+}
+
+.booked {
+  background: rgba(20,83,45,0.55);
+  border-color: rgba(34,197,94,0.25);
+}
+
+.own {
+  background: rgba(30,58,74,0.65);
+  border-color: rgba(59,130,246,0.25);
+}
+
+.past {
+  background: rgba(31,41,55,0.25);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.legend {
+  display:flex;
+  gap:14px;
+  margin: 10px 0 0 0;
+  color:#cbd5e1;
   font-size: 14px;
-  display: flex;
-  align-items: center;
-}}
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display:inline-block;
+  margin-right: 6px;
+}
 </style>
-</head>
-<body>
-
-<div class="grid" id="grid">
-  <div></div>
-  {''.join(f'<strong>Desk {d}</strong>' for d in desks)}
-
-  {''.join(
-    f'''
-    <div class="time">{t}</div>
-    {''.join(
-        f'<div class="cell" data-desk="{d}" data-time="{t}"></div>'
-        for d in desks
-    )}
-    '''
-    for t in time_slots
-  )}
-</div>
-
-<script>
-let selected = new Set();
-
-document.querySelectorAll(".cell").forEach(cell => {{
-  cell.addEventListener("click", () => {{
-    const key = cell.dataset.desk + "_" + cell.dataset.time;
-    if (selected.has(key)) {{
-      selected.delete(key);
-      cell.classList.remove("selected");
-    }} else {{
-      selected.add(key);
-      cell.classList.add("selected");
-    }}
-
-    window.parent.postMessage(
-      {{
-        type: "desk_selection",
-        value: Array.from(selected)
-      }},
-      "*"
-    );
-  });
-}});
-</script>
-
-</body>
-</html>
 """,
-    height=600,
+    unsafe_allow_html=True,
 )
+
+st.markdown(
+    """
+<div class="legend">
+  <span><span class="dot" style="background:rgba(31,41,55,0.80);"></span>Available</span>
+  <span><span class="dot" style="background:rgba(20,83,45,0.80);"></span>Booked</span>
+  <span><span class="dot" style="background:rgba(30,58,74,0.85);"></span>My booking</span>
+  <span><span class="dot" style="background:rgba(31,41,55,0.35);"></span>Past slot</span>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# =====================================================
+# RENDER GRID (VIEW-ONLY rollback)
+# =====================================================
+st.subheader("Select desk and time range")
+
+html = "<div class='grid'>"
+html += "<div></div>"
+for d in DESKS:
+    html += f"<div class='header'>Desk {d}</div>"
+
+for slot in SLOTS:
+    html += f"<div class='time'>{slot.strftime('%H:%M')}</div>"
+
+    for desk in DESKS:
+        key = (desk, slot)
+        tooltip = booked.get(key, "Available")
+
+        if key in own:
+            css = "cell own"
+        elif key in booked:
+            css = "cell booked"
+        elif is_past(slot):
+            css = "cell past"
+        else:
+            css = "cell available"
+
+        # View-only cell with tooltip (keeps the look)
+        html += f"<div class='{css}' title='{tooltip}'></div>"
+
+html += "</div>"
+st.markdown(html, unsafe_allow_html=True)
+
+if is_admin:
+    st.caption("Admin: override controls are not enabled in this rollback view.")
