@@ -119,15 +119,18 @@ if st.button("Confirm Booking"):
 
     st.success("Booking confirmed!")
 
-    # ---------------------------------------------------
-    # QR CODE
-    # ---------------------------------------------------
-    try:
-        qr_url = st.secrets["app_url"] + f"?checkin={desk_id}"
-        qr_img = generate_qr(qr_url)
-        st.image(qr_img, caption="Scan to Check In")
-    except Exception:
-        st.warning("QR code could not be generated.")
+app_url = st.secrets.get("app_url")
+st.write("DEBUG app_url:", app_url)  # remove after fixing
+
+qr_url = f"{app_url}?checkin={desk_id}"
+st.write("DEBUG qr_url:", qr_url)    # remove after fixing
+
+try:
+    qr_img = generate_qr(qr_url)
+    st.image(qr_img, caption="Scan to Check In")
+except Exception as e:
+    st.error("QR code could not be generated.")
+    st.exception(e)  # <-- this will show the real stack trace
 
 
 # ---------------------------------------------------
