@@ -1,7 +1,8 @@
 import streamlit as st
-from datetime import datetime, date
+from datetime import date
 from utils.db import get_conn
 from utils.audit import audit_log
+from utils.dates import uk_date
 
 
 # ---------------------------------------------------
@@ -31,16 +32,6 @@ if st.session_state.user_id is None:
 
 
 # ---------------------------------------------------
-# DATE PARSING (UK FORMAT)
-# ---------------------------------------------------
-def parse_uk_date(value: str) -> date | None:
-    try:
-        return datetime.strptime(value.strip(), "%d/%m/%Y").date()
-    except Exception:
-        return None
-
-
-# ---------------------------------------------------
 # DATABASE CONNECTION
 # ---------------------------------------------------
 conn = get_conn()
@@ -50,27 +41,16 @@ c = conn.cursor()
 # ---------------------------------------------------
 # USER INPUTS
 # ---------------------------------------------------
-default_uk_date = date.today().strftime("%d/%m/%Y")
+date_choice = st.date_input("Select date")
 
-date_str = st.text_input(
-    "Select date (DD/MM/YYYY)",
-    value=default_uk_date,
-    help="Enter the date in UK format, e.g. 25/12/2025",
-)
+# UK-format confirmation (authoritative display)
+st.caption(f"Selected date: {uk_date(date_choice)}")
 
-date_choice = parse_uk_date(date_str)
-
-if date_choice is None:
-    st.error("Please enter a valid date in DD/MM/YYYY format.")
-    conn.close()
-    st.stop()
-
+# Prevent past bookings
 if date_choice < date.today():
     st.error("Bookings cannot be made for past dates.")
     conn.close()
     st.stop()
-
-st.caption(f"Selected date: {date_choice.strftime('%d/%m/%Y')}")
 
 start_time = st.time_input("Start time")
 end_time = st.time_input("End time")
@@ -133,7 +113,7 @@ if st.button("Confirm Booking"):
         (
             st.session_state.user_id,
             desk_id,
-            date_choice.strftime("%Y-%m-%d"),
+            date_choice.strftime("%Y-%m-%d"),  # ISO for DB
             start_time.strftime("%H:%M"),
             end_time.strftime("%H:%M"),
         ),
@@ -143,7 +123,7 @@ if st.button("Confirm Booking"):
     audit_log(
         st.session_state.user_email,
         "NEW_BOOKING",
-        f"desk={desk_id} {start_time}-{end_time} on {date_choice.strftime('%d/%m/%Y')}",
+        f"desk={desk_id} {start_time}-{end_time} on {uk_date(date_choice)}",
     )
 
     st.success("Booking confirmed!")
