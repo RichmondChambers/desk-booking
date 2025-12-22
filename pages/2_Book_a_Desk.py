@@ -118,11 +118,46 @@ for desk_id, start, end, user_name, uid in rows:
 # --------------------------------------------------
 st.markdown(
     """
-<div style="display:flex; gap:24px; margin-bottom:16px; font-size:14px;">
-  <div style="color:#ffffff;">⬜ Available</div>
-  <div style="color:#009fdf;">⬜ Your booking</div>
-  <div style="color:#c0392b;">⬜ Booked</div>
-  <div style="color:#666666;">⬜ Past</div>
+<style>
+.legend {
+  display:flex;
+  gap:24px;
+  margin-bottom:16px;
+  font-size:14px;
+  align-items:center;
+}
+.legend-item{
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.legend-sq{
+  width:18px;
+  height:18px;
+  border-radius:2px;
+  border:1px solid rgba(255,255,255,0.25);
+  display:inline-block;
+  flex: 0 0 auto;
+}
+.legend-available{ background:#ffffff; }
+.legend-own{ background:#009fdf; }
+.legend-booked{ background:#c0392b; }
+.legend-past{ background:#2c2c2c; }
+</style>
+
+<div class="legend">
+  <div class="legend-item" style="color:#ffffff;">
+    <span class="legend-sq legend-available"></span> Available
+  </div>
+  <div class="legend-item" style="color:#009fdf;">
+    <span class="legend-sq legend-own"></span> Your booking
+  </div>
+  <div class="legend-item" style="color:#c0392b;">
+    <span class="legend-sq legend-booked"></span> Booked
+  </div>
+  <div class="legend-item" style="color:#666666;">
+    <span class="legend-sq legend-past"></span> Past
+  </div>
 </div>
 """,
     unsafe_allow_html=True,
