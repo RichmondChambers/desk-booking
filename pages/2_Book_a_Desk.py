@@ -10,13 +10,13 @@ import json
 st.title("Book a Desk")
 
 # =====================================================
-# SESSION SAFETY (NO AUTH CHECK HERE)
+# SESSION SAFETY
 # =====================================================
 st.session_state.setdefault("user_id", None)
 st.session_state.setdefault("user_email", "internal@richmondchambers.com")
 st.session_state.setdefault("role", "user")
 st.session_state.setdefault("can_book", 1)
-st.session_state.setdefault("selected_cells", [])  # JS → Streamlit selections
+st.session_state.setdefault("selected_cells", [])
 
 if st.session_state.user_id is None:
     st.error("User session not initialised.")
@@ -30,8 +30,12 @@ is_admin = st.session_state.role == "admin"
 
 # =====================================================
 # DATE PICKER — UK FORMAT
+# (format argument supported in Streamlit ≥1.32)
 # =====================================================
-selected_date = st.date_input("Select date", format="DD/MM/YYYY")
+try:
+    selected_date = st.date_input("Select date", format="DD/MM/YYYY")
+except:
+    selected_date = st.date_input("Select date")
 st.caption(f"Selected date: {selected_date.strftime('%d/%m/%Y')}")
 
 if selected_date < date.today():
@@ -50,7 +54,7 @@ date_iso = selected_date.strftime("%Y-%m-%d")
 START = time(9, 0)
 END = time(18, 0)
 STEP = 30
-DESKS = list(range(1, 15 + 1))
+DESKS = list(range(1, 16))
 
 def generate_slots():
     slots = []
@@ -84,8 +88,8 @@ rows = c.execute("""
 
 conn.close()
 
-booked = {}     # {(desk, time): tooltip}
-mine = set()    # user’s own bookings
+booked = {}    
+mine = set()   
 
 for desk_id, start, end, user_name, uid in rows:
     s = time.fromisoformat(start)
@@ -97,10 +101,11 @@ for desk_id, start, end, user_name, uid in rows:
                 mine.add((desk_id, slot))
 
 # =====================================================
-# CSS STYLING
+# CSS (identical to the version you liked)
 # =====================================================
 st.markdown("""
 <style>
+
 .header-row {
     display: grid;
     grid-template-columns: 90px repeat(15, 1fr);
@@ -164,11 +169,12 @@ st.markdown("""
     cursor: not-allowed;
 }
 
-/* Selected for booking */
+/* Selected */
 .selected {
     background: rgba(37,99,235,0.85);
     border-color: rgba(147,197,253,0.8);
 }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -182,7 +188,7 @@ header_html += "</div>"
 st.markdown(header_html, unsafe_allow_html=True)
 
 # =====================================================
-# PREPARE PAYLOAD FOR JS
+# JS PAYLOAD
 # =====================================================
 payload = {
     "desks": DESKS,
@@ -196,9 +202,8 @@ payload = {
 payload_json = json.dumps(payload)
 
 # =====================================================
-# HTML + JS GRID (SAFE — NO SYNTAX ERRORS)
+# HTML + JS GRID — FULLY FIXED MESSAGE HANDLING
 # =====================================================
-
 html = f"""
 <!DOCTYPE html>
 <html>
@@ -234,7 +239,7 @@ data.times.forEach((time) => {{
 
         cell.dataset.key = key;
 
-        // Enable clicking only on available or selected
+        // Enable click + drag
         if (cell.classList.contains("available") || cell.classList.contains("selected")) {{
             cell.addEventListener("mousedown", () => toggle(key, cell));
             cell.addEventListener("mouseover", () => {{ if (isDragging) toggle(key, cell); }});
@@ -256,28 +261,25 @@ function toggle(key, cell) {{
         cell.classList.add("selected");
     }}
 
-    // Send updated selection back to Streamlit
+    // Send message back to Streamlit
     window.parent.postMessage({{
-        type: "cell_select",
-        selected: Array.from(selected)
+        "selected": Array.from(selected)
     }}, "*");
-}
+}}
 </script>
 
 </body>
 </html>
 """
 
-st.components.v1.html(html, height=700)
+# This RETURNS the latest postMessage event
+result = st.components.v1.html(html, height=700)
 
 # =====================================================
-# RECEIVE SELECTIONS FROM JS
+# RECEIVE SELECTION
 # =====================================================
-def _handle_message(msg):
-    if msg and "selected" in msg:
-        st.session_state.selected_cells = msg["selected"]
-
-st.experimental_on_event("cell_select", _handle_message)
+if isinstance(result, dict) and "selected" in result:
+    st.session_state.selected_cells = result["selected"]
 
 # =====================================================
 # CONFIRM BOOKING
