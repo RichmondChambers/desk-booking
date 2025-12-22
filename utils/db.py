@@ -2,6 +2,17 @@ import sqlite3
 
 DB_PATH = "data.db"
 
+def make_admin(email: str):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute(
+        "UPDATE users SET role = 'admin', can_book = 1 WHERE email = ?",
+        (email,)
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
