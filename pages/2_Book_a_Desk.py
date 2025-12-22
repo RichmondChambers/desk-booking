@@ -72,7 +72,7 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur <= end_dt:  # <= so 18:00 is visible
+while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -81,6 +81,16 @@ def is_past(t: time) -> bool:
     if selected_date != date.today():
         return False
     return datetime.combine(selected_date, t) < datetime.now()
+
+
+# --------------------------------------------------
+# HELPER: USER INITIALS  (NEW)
+# --------------------------------------------------
+def make_initials(name: str) -> str:
+    parts = [p for p in name.strip().split() if p]
+    if not parts:
+        return ""
+    return "".join(p[0].upper() for p in parts[:2])
 
 
 # --------------------------------------------------
@@ -98,16 +108,21 @@ rows = conn.execute(
 ).fetchall()
 conn.close()
 
-booked = {}   # key -> user name
+booked = {}   # key -> {"name": str, "initials": str}
 mine = set()
 
 for desk_id, start, end, user_name, uid in rows:
     s = time.fromisoformat(start)
     e = time.fromisoformat(end)
+    init = make_initials(user_name)
+
     for t in slots:
         if s <= t < e:
             key = f"{desk_id}_{t.strftime('%H:%M')}"
-            booked[key] = user_name
+            booked[key] = {
+                "name": user_name,
+                "initials": init,
+            }
             if uid == st.session_state.user_id:
                 mine.add(key)
 
@@ -178,28 +193,6 @@ html, body { margin:0; padding:0; font-family:inherit; }
 <div class="grid" id="grid"></div>
 
 <script>
-// -------- Font sync from Streamlit parent --------
-(function syncStreamlitFont() {
-  function apply() {
-    try {
-      const p = window.parent?.document?.body;
-      if (!p) return false;
-      const f = window.parent.getComputedStyle(p).fontFamily;
-      if (f) {
-        document.documentElement.style.fontFamily = f;
-        document.body.style.fontFamily = f;
-        return true;
-      }
-    } catch(e){}
-    return false;
-  }
-  if (apply()) return;
-  let i = 0;
-  const t = setInterval(() => {
-    if (apply() || ++i > 20) clearInterval(t);
-  }, 100);
-})();
-
 const data = %s;
 const grid = document.getElementById("grid");
 const info = document.getElementById("info");
@@ -217,7 +210,7 @@ function statusForCell(key) {
 function showInfo(deskId, timeStr, key) {
   const deskName = data.deskNames[deskId] ?? String(deskId);
   let text = `${data.dateLabel} · ${deskName} · ${timeStr} · ${statusForCell(key)}`;
-  if (data.booked[key]) text += ` · ${data.booked[key]}`;
+  if (data.booked[key]) text += ` · ${data.booked[key].name}`;
   info.innerText = text;
 }
 
