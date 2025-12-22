@@ -4,9 +4,6 @@ from utils.db import get_conn
 from utils.audit import log_action
 import json
 
-# =====================================================
-# PAGE TITLE
-# =====================================================
 st.title("Book a Desk")
 
 # =====================================================
@@ -43,12 +40,30 @@ if selected_date.weekday() >= 5:
 date_iso = selected_date.strftime("%Y-%m-%d")
 
 # =====================================================
-# DESKS (Desk 1 / Desk 2 / Desk 3)
+# LOAD DESKS FROM DB (ADMIN CONTROLLED)
 # =====================================================
-DESKS = [1, 2, 3]
+conn = get_conn()
+desks = conn.execute(
+    """
+    SELECT id, name
+    FROM desks
+    WHERE is_active = 1
+      AND (admin_only = 0 OR ? = 'admin')
+    ORDER BY id
+    """,
+    (st.session_state.role,),
+).fetchall()
+conn.close()
+
+if not desks:
+    st.warning("No desks are available for booking.")
+    st.stop()
+
+DESK_IDS = [d[0] for d in desks]
+DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # =====================================================
-# TIME SLOTS (09:00–18:00, 30 min)
+# TIME SLOTS (09:00–17:30 bookable + 18:00 label)
 # =====================================================
 START = time(9, 0)
 END = time(18, 0)
@@ -61,6 +76,7 @@ def generate_slots():
     while cur < end:
         slots.append(cur.time())
         cur += timedelta(minutes=STEP)
+    slots.append(time(18, 0))  # visual end row
     return slots
 
 SLOTS = generate_slots()
@@ -105,17 +121,18 @@ st.markdown("""
 """)
 
 # =====================================================
-# JS PAYLOAD
+# COMPONENT PAYLOAD
 # =====================================================
 payload = {
-    "desks": DESKS,
+    "desks": DESK_IDS,
+    "desk_names": DESK_NAMES,
     "times": [t.strftime("%H:%M") for t in SLOTS],
     "selected": st.session_state.selected_cells,
     "booked": booked,
     "mine": list(mine),
     "past": [
         f"{d}_{t.strftime('%H:%M')}"
-        for d in DESKS
+        for d in DESK_IDS
         for t in SLOTS
         if is_past(t)
     ],
@@ -124,7 +141,7 @@ payload = {
 payload_json = json.dumps(payload)
 
 # =====================================================
-# HTML GRID (HEADINGS + DRAG + SCROLL)
+# HTML GRID (STREAMLIT-CORRECT)
 # =====================================================
 result = st.components.v1.html(
 f"""
@@ -132,47 +149,46 @@ f"""
 <html>
 <head>
 <style>
-html, body {{
-    margin: 0;
-    padding: 0;
-    font-family: sans-serif;
-    color: #e5e7eb;
+body {{
+  margin: 0;
+  font-family: sans-serif;
+  color: #e5e7eb;
 }}
 
 .container {{
-    max-height: 900px;
-    overflow-y: auto;
+  max-height: 900px;
+  overflow-y: auto;
 }}
 
 .grid {{
-    display: grid;
-    grid-template-columns: 90px repeat(3, 1fr);
-    gap: 10px;
-    align-items: center;
+  display: grid;
+  grid-template-columns: 90px repeat({len(DESK_IDS)}, 1fr);
+  gap: 10px;
+  align-items: center;
 }}
 
 .header {{
-    font-weight: 600;
-    text-align: center;
-    position: sticky;
-    top: 0;
-    background: #020617;
-    padding: 6px 0;
-    z-index: 5;
+  font-weight: 600;
+  text-align: center;
+  position: sticky;
+  top: 0;
+  background: #020617;
+  padding: 6px 0;
+  z-index: 5;
 }}
 
 .time {{
-    font-weight: 600;
-    text-align: right;
-    padding-right: 10px;
+  font-weight: 600;
+  text-align: right;
+  padding-right: 10px;
 }}
 
 .cell {{
-    height: 36px;
-    border-radius: 8px;
-    border: 1px solid #e5e7eb;
-    cursor: pointer;
-    position: relative;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  position: relative;
 }}
 
 .available {{ background: #ffffff; }}
@@ -185,24 +201,22 @@ html, body {{
 .past {{ background: #1f2937; cursor: not-allowed; }}
 
 .cell[data-tooltip]:hover::after {{
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: 120%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #111827;
-    color: white;
-    padding: 6px 8px;
-    font-size: 12px;
-    border-radius: 6px;
-    white-space: nowrap;
-    z-index: 10;
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111827;
+  color: white;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  white-space: nowrap;
 }}
 </style>
 </head>
 
 <body>
-
 <div class="container">
   <div class="grid" id="grid"></div>
 </div>
@@ -216,16 +230,16 @@ let dragging = false;
 document.addEventListener("mousedown", () => dragging = true);
 document.addEventListener("mouseup", () => dragging = false);
 
-// Header row
+// HEADER
 grid.appendChild(document.createElement("div"));
-["Desk 1","Desk 2","Desk 3"].forEach(h => {{
-  const d = document.createElement("div");
-  d.className = "header";
-  d.innerText = h;
-  grid.appendChild(d);
+data.desks.forEach(d => {{
+  const h = document.createElement("div");
+  h.className = "header";
+  h.innerText = data.desk_names[d];
+  grid.appendChild(h);
 }});
 
-// Time rows
+// GRID
 data.times.forEach(time => {{
   const t = document.createElement("div");
   t.className = "time";
@@ -264,10 +278,9 @@ function toggle(key, cell) {{
     selected.add(key);
     cell.classList.add("selected");
   }}
-  window.parent.postMessage({{selected:[...selected]}}, "*");
+  Streamlit.setComponentValue({{selected:[...selected]}});
 }}
 </script>
-
 </body>
 </html>
 """,
@@ -285,7 +298,6 @@ if isinstance(result, dict) and "selected" in result:
 # =====================================================
 if st.session_state.selected_cells:
     grouped = {}
-
     for k in st.session_state.selected_cells:
         d, t = k.split("_")
         grouped.setdefault(int(d), []).append(time.fromisoformat(t))
@@ -296,7 +308,7 @@ if st.session_state.selected_cells:
         times.sort()
         start = times[0]
         end = (datetime.combine(date.today(), times[-1]) + timedelta(minutes=30)).time()
-        st.markdown(f"**Desk {desk}** — {start.strftime('%H:%M')}–{end.strftime('%H:%M')}")
+        st.markdown(f"**{DESK_NAMES[desk]}** — {start.strftime('%H:%M')}–{end.strftime('%H:%M')}")
 
     if st.button("Confirm Booking"):
         conn = get_conn()
@@ -318,11 +330,7 @@ if st.session_state.selected_cells:
         conn.commit()
         conn.close()
 
-        log_action(
-            action="NEW_BOOKING",
-            details=f"{len(grouped)} desk(s) booked on {date_iso}",
-        )
-
+        log_action("NEW_BOOKING", f"{len(grouped)} desk(s) booked on {date_iso}")
         st.session_state.selected_cells = []
         st.success("Booking confirmed.")
         st.rerun()
