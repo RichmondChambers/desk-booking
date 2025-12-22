@@ -78,10 +78,12 @@ while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
-def is_past(t):
+
+def is_past(t: time) -> bool:
     if selected_date != date.today():
         return False
     return datetime.combine(date.today(), t) < datetime.now()
+
 
 # --------------------------------------------------
 # LOAD BOOKINGS
@@ -112,19 +114,24 @@ for desk_id, start, end, user_name, uid in rows:
                 mine.add(key)
 
 # --------------------------------------------------
-# INLINE LEGEND
+# INLINE LEGEND (unchanged; NOT implementing (2) here)
 # --------------------------------------------------
-st.markdown("""
+st.markdown(
+    """
 <div style="display:flex; gap:24px; margin-bottom:16px; font-size:14px;">
   <div style="color:#ffffff;">⬜ Available</div>
   <div style="color:#009fdf;">■ Your booking</div>
   <div style="color:#c0392b;">■ Booked</div>
   <div style="color:#666666;">■ Past</div>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # --------------------------------------------------
 # GRID HTML + JS
+# (1) Font set to Streamlit's default via var(--font)
+# (3) Live hover/click/drag info panel
 # --------------------------------------------------
 payload = {
     "desks": DESK_IDS,
@@ -139,12 +146,15 @@ payload = {
         for t in slots
         if is_past(t)
     ],
+    "dateLabel": selected_date.strftime("%d/%m/%Y"),
 }
 
 html = f"""
 <style>
+/* (1) Force all component text to use Streamlit's default font */
 * {{
-  font-family: inherit;
+  font-family: var(--font);
+  box-sizing: border-box;
 }}
 
 .grid {{
@@ -199,62 +209,48 @@ html = f"""
   background: #2c2c2c;
   cursor: not-allowed;
 }}
+
+/* (3) Info panel */
+#info {{
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.08);
+  font-size: 14px;
+  min-height: 38px;
+  color: #e5e7eb;
+}}
 </style>
 
+<div id="info">Hover over a slot to see details.</div>
 <div class="grid" id="grid"></div>
 
 <script>
 const data = {json.dumps(payload)};
 const grid = document.getElementById("grid");
+const info = document.getElementById("info");
 
 let selected = new Set(data.selected);
 let dragging = false;
 
-// Header row
-grid.appendChild(document.createElement("div"));
-data.desks.forEach(d => {{
-  const h = document.createElement("div");
-  h.className = "header";
-  h.innerText = data.deskNames[d];
-  grid.appendChild(h);
-}});
+// Helper: human-friendly status
+function statusForCell(el, key) {{
+  if (data.mine.includes(key)) return "Your booking";
+  if (data.booked[key]) return "Booked";
+  if (data.past.includes(key)) return "Past";
+  return "Available";
+}}
 
-// Rows
-data.times.forEach(time => {{
-  const t = document.createElement("div");
-  t.className = "time";
-  t.innerText = time;
-  grid.appendChild(t);
+function showInfo(deskId, timeStr, key) {{
+  const deskName = data.deskNames[deskId] ?? String(deskId);
+  const status = statusForCell(null, key);
+  let text = `${{data.dateLabel}} · ${{deskName}} · ${{timeStr}} · ${{status}}`;
 
-  data.desks.forEach(desk => {{
-    const key = desk + "_" + time;
-    const c = document.createElement("div");
-
-    if (data.mine.includes(key)) c.className = "cell own";
-    else if (data.booked[key]) {{
-      c.className = "cell booked";
-      c.title = "Booked by " + data.booked[key];
-    }}
-    else if (data.past.includes(key)) c.className = "cell past";
-    else c.className = "cell available";
-
-    if (selected.has(key)) c.classList.add("selected");
-
-    c.onmousedown = () => {{
-      if (!c.classList.contains("available")) return;
-      dragging = true;
-      toggle(key, c);
-    }};
-    c.onmouseover = () => {{
-      if (dragging) toggle(key, c);
-    }};
-    c.onmouseup = () => dragging = false;
-
-    grid.appendChild(c);
-  }});
-}});
-
-document.onmouseup = () => dragging = false;
+  if (data.booked[key]) {{
+    text += ` · ${{data.booked[key]}}`;
+  }}
+  info.innerText = text;
+}}
 
 function toggle(key, el) {{
   if (!el.classList.contains("available")) return;
@@ -267,6 +263,66 @@ function toggle(key, el) {{
   }}
   window.parent.postMessage({{selected: Array.from(selected)}}, "*");
 }}
+
+// Header row
+grid.appendChild(document.createElement("div"));
+data.desks.forEach(d => {{
+  const h = document.createElement("div");
+  h.className = "header";
+  h.innerText = data.deskNames[d];
+  grid.appendChild(h);
+}});
+
+// Rows
+data.times.forEach(timeStr => {{
+  const t = document.createElement("div");
+  t.className = "time";
+  t.innerText = timeStr;
+  grid.appendChild(t);
+
+  data.desks.forEach(deskId => {{
+    const key = deskId + "_" + timeStr;
+    const c = document.createElement("div");
+
+    if (data.mine.includes(key)) c.className = "cell own";
+    else if (data.booked[key]) {{
+      c.className = "cell booked";
+      c.title = "Booked by " + data.booked[key];
+    }}
+    else if (data.past.includes(key)) c.className = "cell past";
+    else c.className = "cell available";
+
+    if (selected.has(key)) c.classList.add("selected");
+
+    // (3) Hover confirmation
+    c.onmouseenter = () => {{
+      showInfo(deskId, timeStr, key);
+    }};
+
+    // Click + drag behaviour
+    c.onmousedown = () => {{
+      // Always show info as confirmation, even if non-interactive
+      showInfo(deskId, timeStr, key);
+
+      if (!c.classList.contains("available")) return;
+      dragging = true;
+      toggle(key, c);
+    }};
+
+    c.onmouseover = () => {{
+      // While dragging, toggling on hover, and show info as confirmation
+      showInfo(deskId, timeStr, key);
+
+      if (dragging) toggle(key, c);
+    }};
+
+    c.onmouseup = () => dragging = false;
+
+    grid.appendChild(c);
+  }});
+}});
+
+document.onmouseup = () => dragging = false;
 </script>
 """
 
