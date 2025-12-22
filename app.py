@@ -7,6 +7,12 @@ from utils.db import init_db, get_conn
 
 st.set_page_config(page_title="Desk Booking", layout="wide")
 
+from utils.db import init_db, seed_desks
+
+init_db()
+seed_desks()
+
+
 # ---------------------------------------------------
 # LOGOUT FUNCTION
 # ---------------------------------------------------
