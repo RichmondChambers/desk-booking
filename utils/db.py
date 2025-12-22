@@ -10,7 +10,9 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # Users table
+    # ---------------------------------------------------
+    # USERS TABLE
+    # ---------------------------------------------------
     c.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,7 +23,18 @@ def init_db():
         )
     """)
 
-    # Bookings table
+    # ---- ADD is_active COLUMN IF MISSING (SAFE FOR SQLITE) ----
+    c.execute("PRAGMA table_info(users)")
+    columns = [row[1] for row in c.fetchall()]
+
+    if "is_active" not in columns:
+        c.execute(
+            "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1"
+        )
+
+    # ---------------------------------------------------
+    # BOOKINGS TABLE
+    # ---------------------------------------------------
     c.execute("""
         CREATE TABLE IF NOT EXISTS bookings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +48,9 @@ def init_db():
         )
     """)
 
-    # Audit log
+    # ---------------------------------------------------
+    # AUDIT LOG TABLE
+    # ---------------------------------------------------
     c.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
