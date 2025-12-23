@@ -7,7 +7,7 @@ def require_login():
         return
 
     allowed = (st.secrets["oauth"].get("allowed_domain") or "").lower().strip()
-    allowed = allowed.lstrip("@")  # allow either "@domain.com" or "domain.com"
+    allowed = allowed.lstrip("@")
 
     params = {
         "client_id": st.secrets["oauth"]["client_id"],
@@ -18,7 +18,6 @@ def require_login():
         "prompt": "select_account",
     }
 
-    # Only include hd hint if configured
     if allowed:
         params["hd"] = allowed
 
@@ -26,11 +25,8 @@ def require_login():
 
     st.title("Desk Booking System")
     st.markdown("### Redirecting to Google sign-in…")
-    st.caption(
-        "Note: Google sign-in may open in a new tab due to browser security rules."
-    )
+    st.caption("Google sign-in may open in a new tab.")
 
-    # Redirect (top-level navigation). This avoids clickable links that often open new tabs.
     st.markdown(
         f'<meta http-equiv="refresh" content="0; url={auth_url}">',
         unsafe_allow_html=True,
@@ -41,12 +37,8 @@ def require_login():
 
 def require_admin():
     """
-    Stop the page unless the current session user is an admin.
-    Assumes app.py has already mapped the OAuth user to a local user record and set:
-      - st.session_state["role"]
-      - st.session_state["user_email"]
+    Stop execution unless the current user is an admin.
     """
-    role = st.session_state.get("role")
-    if role != "admin":
+    if st.session_state.get("role") != "admin":
         st.error("Admins only.")
         st.stop()
