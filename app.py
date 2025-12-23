@@ -3,7 +3,7 @@ import requests
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
-from utils.db import init_db, seed_desks, make_admin, get_conn
+from utils.db import init_db, seed_desks, get_conn
 
 # ---------------------------------------------------
 # STREAMLIT CONFIG
@@ -11,35 +11,30 @@ from utils.db import init_db, seed_desks, make_admin, get_conn
 st.set_page_config(page_title="Desk Booking", layout="wide")
 
 # ---------------------------------------------------
+# BOOTSTRAP ADMINS (CANNOT BE LOST)
+# ---------------------------------------------------
+BOOTSTRAP_ADMINS = {
+    "paul.richmond@richmondchambers.com",
+}
+
+# ---------------------------------------------------
 # INITIALISE DATABASE + SEED DATA
 # ---------------------------------------------------
 init_db()
 seed_desks()
 
-# 🔑 TEMPORARY: PROMOTE YOURSELF TO ADMIN
-# Replace with your real Richmond Chambers email
-make_admin("paul.richmond@richmondchambers.com")
-
 # ---------------------------------------------------
 # LOGOUT FUNCTION
 # ---------------------------------------------------
 def logout():
-    for key in [
-        "oauth_email",
-        "oauth_name",
-        "user_id",
-        "user_email",
-        "user_name",
-        "role",
-        "can_book",
-    ]:
+    for key in list(st.session_state.keys()):
         st.session_state.pop(key, None)
 
     st.query_params.clear()
     st.rerun()
 
 # ---------------------------------------------------
-# HANDLE OAUTH CALLBACK (STATELESS, STREAMLIT-SAFE)
+# HANDLE OAUTH CALLBACK (SAFE + SINGLE TAB)
 # ---------------------------------------------------
 query_params = st.query_params
 
@@ -81,27 +76,23 @@ if "code" in query_params and "oauth_email" not in st.session_state:
 
     st.session_state["oauth_email"] = email
     st.session_state["oauth_name"] = name
+
+    # VERY IMPORTANT: clear params BEFORE rerun
     st.query_params.clear()
+    st.rerun()
 
 # ---------------------------------------------------
-# REQUIRE LOGIN (DO NOT RUN DURING OAUTH CALLBACK)
+# REQUIRE LOGIN (ONLY WHEN NOT IN CALLBACK)
 # ---------------------------------------------------
-if "code" not in st.query_params:
+if "oauth_email" not in st.session_state:
     require_login()
-
-# ---------------------------------------------------
-# INITIALISE SESSION DEFAULTS
-# ---------------------------------------------------
-st.session_state.setdefault("user_id", None)
-st.session_state.setdefault("user_email", None)
-st.session_state.setdefault("user_name", None)
-st.session_state.setdefault("role", "user")
-st.session_state.setdefault("can_book", 1)
+    st.stop()
 
 # ---------------------------------------------------
 # MAP OAUTH USER → LOCAL USER RECORD
 # ---------------------------------------------------
-if st.session_state.user_id is None:
+if "user_id" not in st.session_state:
+
     email = st.session_state["oauth_email"]
     name = st.session_state["oauth_name"]
 
@@ -119,12 +110,14 @@ if st.session_state.user_id is None:
 
     # FIRST LOGIN → CREATE USER
     if not row:
+        role = "admin" if email in BOOTSTRAP_ADMINS else "user"
+
         c.execute(
             """
             INSERT INTO users (name, email, role, can_book, is_active)
-            VALUES (?, ?, 'user', 1, 1)
+            VALUES (?, ?, ?, 1, 1)
             """,
-            (name, email),
+            (name, email, role),
         )
         conn.commit()
 
@@ -142,20 +135,20 @@ if st.session_state.user_id is None:
         conn.close()
         st.error(
             "Your account has been deactivated. "
-            "Please contact an administrator if you believe this is an error."
+            "Please contact an administrator."
         )
         st.stop()
+
+    # HARD ADMIN OVERRIDE (SAFETY NET)
+    role = "admin" if email in BOOTSTRAP_ADMINS else row[2]
 
     conn.close()
 
     st.session_state.user_id = row[0]
     st.session_state.user_name = row[1]
     st.session_state.user_email = email
+    st.session_state.role = role
     st.session_state.can_book = row[3]
-
-    # IMPORTANT: NEVER DOWNGRADE ADMIN ROLE IN-SESSION
-    if st.session_state.role != "admin":
-        st.session_state.role = row[2]
 
 # ---------------------------------------------------
 # SIDEBAR
