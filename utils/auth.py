@@ -1,13 +1,13 @@
 import streamlit as st
 from urllib.parse import urlencode
 
+
 def require_login():
-    # Already authenticated
+    """
+    Redirect the current tab to Google OAuth if the user is not authenticated.
+    """
     if "oauth_email" in st.session_state:
         return
-
-    allowed = (st.secrets["oauth"].get("allowed_domain") or "").lower().strip()
-    allowed = allowed.lstrip("@")
 
     params = {
         "client_id": st.secrets["oauth"]["client_id"],
@@ -18,15 +18,15 @@ def require_login():
         "prompt": "select_account",
     }
 
-    if allowed:
-        params["hd"] = allowed
-
     auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
 
     st.title("Desk Booking System")
     st.markdown("### Redirecting to Google sign-in…")
-    st.caption("Google sign-in may open in a new tab.")
+    st.caption(
+        "Google sign-in may open in a new tab due to browser security rules."
+    )
 
+    # Force top-level navigation (no clickable links, no popups)
     st.markdown(
         f'<meta http-equiv="refresh" content="0; url={auth_url}">',
         unsafe_allow_html=True,
@@ -38,6 +38,7 @@ def require_login():
 def require_admin():
     """
     Stop execution unless the current user is an admin.
+    Assumes role has already been set in st.session_state by app.py.
     """
     if st.session_state.get("role") != "admin":
         st.error("Admins only.")
