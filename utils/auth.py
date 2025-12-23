@@ -12,7 +12,7 @@ def require_login():
             "web": {
                 "client_id": st.secrets["oauth"]["client_id"],
                 "client_secret": st.secrets["oauth"]["client_secret"],
-                # ✅ Use v2 endpoint (required)
+                # Use v2 endpoint
                 "auth_uri": "https://accounts.google.com/o/oauth2/v2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
                 "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
@@ -26,15 +26,15 @@ def require_login():
         redirect_uri=st.secrets["oauth"]["redirect_uri"],
     )
 
-    # ❌ DO NOT pass `hd`
-    auth_url, _ = flow.authorization_url(prompt="consent")
+    auth_url, _ = flow.authorization_url(
+        prompt="select_account"
+    )
 
     st.title("Desk Booking System")
     st.markdown("### Sign in required")
-    st.markdown(
-        f'<a href="{auth_url}">Sign in with Google</a>',
-        unsafe_allow_html=True,
-    )
+
+    # IMPORTANT: user-initiated navigation only
+    st.link_button("Sign in with Google", auth_url)
 
     st.stop()
 
