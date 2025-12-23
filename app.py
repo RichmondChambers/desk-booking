@@ -17,7 +17,6 @@ init_db()
 seed_desks()
 
 # 🔑 TEMPORARY: PROMOTE YOURSELF TO ADMIN
-# Replace with your real Richmond Chambers email
 make_admin("paul.richmond@richmondchambers.com")
 
 # ---------------------------------------------------
@@ -39,7 +38,7 @@ def logout():
     st.rerun()
 
 # ---------------------------------------------------
-# HANDLE OAUTH CALLBACK (STATELESS, STREAMLIT-SAFE)
+# HANDLE OAUTH CALLBACK
 # ---------------------------------------------------
 query_params = st.query_params
 
@@ -50,7 +49,8 @@ if "code" in query_params and "oauth_email" not in st.session_state:
             "web": {
                 "client_id": st.secrets["oauth"]["client_id"],
                 "client_secret": st.secrets["oauth"]["client_secret"],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                # ✅ v2 endpoint
+                "auth_uri": "https://accounts.google.com/o/oauth2/v2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
                 "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
             }
@@ -75,6 +75,7 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     email = (userinfo.get("email") or "").lower()
     name = userinfo.get("name") or email.split("@")[0]
 
+    # ✅ Enforce domain AFTER login
     if not email.endswith("@richmondchambers.com"):
         st.error("Access restricted to Richmond Chambers staff.")
         st.stop()
@@ -84,7 +85,7 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     st.query_params.clear()
 
 # ---------------------------------------------------
-# REQUIRE LOGIN (DO NOT RUN DURING OAUTH CALLBACK)
+# REQUIRE LOGIN
 # ---------------------------------------------------
 if "code" not in st.query_params:
     require_login()
@@ -142,7 +143,7 @@ if st.session_state.user_id is None:
         conn.close()
         st.error(
             "Your account has been deactivated. "
-            "Please contact an administrator if you believe this is an error."
+            "Please contact an administrator."
         )
         st.stop()
 
@@ -153,7 +154,6 @@ if st.session_state.user_id is None:
     st.session_state.user_email = email
     st.session_state.can_book = row[3]
 
-    # IMPORTANT: NEVER DOWNGRADE ADMIN ROLE IN-SESSION
     if st.session_state.role != "admin":
         st.session_state.role = row[2]
 
