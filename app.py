@@ -18,28 +18,25 @@ BOOTSTRAP_ADMINS = {
 }
 
 # ---------------------------------------------------
-# INITIALISE DATABASE + SEED DATA
+# INITIALISE DATABASE
 # ---------------------------------------------------
 init_db()
 seed_desks()
 
 # ---------------------------------------------------
-# LOGOUT FUNCTION
+# LOGOUT
 # ---------------------------------------------------
 def logout():
-    for key in list(st.session_state.keys()):
-        st.session_state.pop(key, None)
-
+    st.session_state.clear()
     st.query_params.clear()
     st.rerun()
 
 # ---------------------------------------------------
-# HANDLE OAUTH CALLBACK
+# HANDLE OAUTH CALLBACK (ONE-TIME)
 # ---------------------------------------------------
 query_params = st.query_params
 
 if "code" in query_params and "oauth_email" not in st.session_state:
-
     flow = Flow.from_client_config(
         {
             "web": {
@@ -70,6 +67,7 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     email = (userinfo.get("email") or "").lower()
     name = userinfo.get("name") or email.split("@")[0]
 
+    # Enforce domain AFTER login (correct & safe)
     if not email.endswith("@richmondchambers.com"):
         st.error("Access restricted to Richmond Chambers staff.")
         st.stop()
@@ -88,10 +86,9 @@ if "oauth_email" not in st.session_state:
     st.stop()
 
 # ---------------------------------------------------
-# MAP OAUTH USER → LOCAL USER RECORD
+# MAP OAUTH USER → LOCAL USER
 # ---------------------------------------------------
 if "user_id" not in st.session_state:
-
     email = st.session_state["oauth_email"]
     name = st.session_state["oauth_name"]
 
@@ -107,10 +104,9 @@ if "user_id" not in st.session_state:
         (email,),
     ).fetchone()
 
-    # FIRST LOGIN → CREATE USER
+    # First login → create user
     if not row:
         role = "admin" if email in BOOTSTRAP_ADMINS else "user"
-
         c.execute(
             """
             INSERT INTO users (name, email, role, can_book, is_active)
@@ -129,16 +125,13 @@ if "user_id" not in st.session_state:
             (email,),
         ).fetchone()
 
-    # BLOCK DEACTIVATED USERS
+    # Block deactivated users
     if row[4] == 0:
         conn.close()
-        st.error(
-            "Your account has been deactivated. "
-            "Please contact an administrator."
-        )
+        st.error("Your account has been deactivated. Contact an administrator.")
         st.stop()
 
-    # HARD ADMIN OVERRIDE
+    # Hard admin safety net
     role = "admin" if email in BOOTSTRAP_ADMINS else row[2]
 
     conn.close()
@@ -155,7 +148,6 @@ if "user_id" not in st.session_state:
 st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
 st.sidebar.markdown(f"**Email:** {st.session_state.user_email}")
 st.sidebar.markdown(f"**Role:** {st.session_state.role}")
-
 st.sidebar.divider()
 
 if st.sidebar.button("Log out"):
@@ -166,7 +158,7 @@ if st.sidebar.button("Log out"):
 # ---------------------------------------------------
 st.title("Desk Booking System")
 
-# ---------------- ADMIN SECTION ----------------
+# ---------------- ADMIN ----------------
 if st.session_state.role == "admin":
     require_admin()
 
@@ -179,6 +171,6 @@ if st.session_state.role == "admin":
 
     st.divider()
 
-# ---------------- USER SECTION ----------------
+# ---------------- USER ----------------
 st.subheader("Desk booking")
 st.write("Use the sidebar to navigate between booking functions.")
