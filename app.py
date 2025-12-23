@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 from google_auth_oauthlib.flow import Flow
 
-from utils.auth import require_login
+from utils.auth import require_login, require_admin
 from utils.db import init_db, seed_desks, get_conn
 
 # ---------------------------------------------------
@@ -34,7 +34,7 @@ def logout():
     st.rerun()
 
 # ---------------------------------------------------
-# HANDLE OAUTH CALLBACK (SAFE + SINGLE TAB)
+# HANDLE OAUTH CALLBACK
 # ---------------------------------------------------
 query_params = st.query_params
 
@@ -77,12 +77,11 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     st.session_state["oauth_email"] = email
     st.session_state["oauth_name"] = name
 
-    # VERY IMPORTANT: clear params BEFORE rerun
     st.query_params.clear()
     st.rerun()
 
 # ---------------------------------------------------
-# REQUIRE LOGIN (ONLY WHEN NOT IN CALLBACK)
+# REQUIRE LOGIN
 # ---------------------------------------------------
 if "oauth_email" not in st.session_state:
     require_login()
@@ -139,7 +138,7 @@ if "user_id" not in st.session_state:
         )
         st.stop()
 
-    # HARD ADMIN OVERRIDE (SAFETY NET)
+    # HARD ADMIN OVERRIDE
     role = "admin" if email in BOOTSTRAP_ADMINS else row[2]
 
     conn.close()
@@ -166,4 +165,20 @@ if st.sidebar.button("Log out"):
 # MAIN APP
 # ---------------------------------------------------
 st.title("Desk Booking System")
+
+# ---------------- ADMIN SECTION ----------------
+if st.session_state.role == "admin":
+    require_admin()
+
+    st.subheader("Admin tools")
+    st.write("You have administrator access.")
+
+    st.markdown("- Manage desks")
+    st.markdown("- Manage users")
+    st.markdown("- View utilisation reports")
+
+    st.divider()
+
+# ---------------- USER SECTION ----------------
+st.subheader("Desk booking")
 st.write("Use the sidebar to navigate between booking functions.")
