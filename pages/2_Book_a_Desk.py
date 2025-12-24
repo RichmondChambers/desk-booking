@@ -15,8 +15,9 @@ st.session_state.setdefault("user_id", 1)  # temporary safe default
 # HIDDEN INPUT BRIDGE (FOR GRID SELECTION)
 # --------------------------------------------------
 selected_cells_str = st.text_input(
-    "selected_cells_hidden",
+    "",
     value="",
+    key="selected_cells_hidden",
     label_visibility="collapsed",
 )
 
@@ -175,9 +176,9 @@ function status(key) {
 
 // Push selection into hidden Streamlit input
 function pushSelection() {
-  const input = window.parent.document.querySelector(
-    'input[aria-label="selected_cells_hidden"]'
-  );
+  const input = window.parent.document.getElementById(
+  "selected_cells_hidden"
+);
   if (!input) return;
   input.value = Array.from(selected).join(",");
   input.dispatchEvent(new Event("input", { bubbles: true }));
