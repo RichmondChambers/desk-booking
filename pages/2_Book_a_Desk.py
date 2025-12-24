@@ -57,6 +57,7 @@ desks = conn.execute(
     """
     SELECT id, name
     FROM desks
+    WHERE is_active = 1
     ORDER BY id
     """
 ).fetchall()
