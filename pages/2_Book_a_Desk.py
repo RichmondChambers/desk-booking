@@ -7,18 +7,19 @@ st.set_page_config(page_title="Book a Desk", layout="wide")
 st.title("Book a Desk")
 
 # --------------------------------------------------
-# SESSION SAFETY
+# SESSION SAFETY (TEMPORARY DEFAULT)
 # --------------------------------------------------
-st.session_state.setdefault("user_id", 1)  # replace with real auth later
+st.session_state.setdefault("user_id", 1)
 
-# Hidden input bridge (CRITICAL)
+# --------------------------------------------------
+# HIDDEN INPUT BRIDGE (CRITICAL)
+# --------------------------------------------------
 selected_cells_str = st.text_input(
     "selected_cells_hidden",
     value="",
     label_visibility="collapsed",
 )
 
-# Parse selection
 if selected_cells_str:
     selected_cells = selected_cells_str.split(",")
 else:
@@ -71,7 +72,10 @@ while cur <= end_dt:
     cur += timedelta(minutes=STEP)
 
 def is_past(t):
-    return selected_date == date.today() and datetime.combine(selected_date, t) < datetime.now()
+    return (
+        selected_date == date.today()
+        and datetime.combine(selected_date, t) < datetime.now()
+    )
 
 # --------------------------------------------------
 # LOAD EXISTING BOOKINGS
@@ -113,16 +117,15 @@ payload = {
 }
 
 # --------------------------------------------------
-# GRID HTML (WITH WORKING STREAMLIT BRIDGE)
+# GRID HTML (WITH WORKING BRIDGE)
 # --------------------------------------------------
 html = """
 <style>
-html, body { margin:0; padding:0; font-family:inherit; }
 .grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
 .time,.header { text-align:center; font-size:14px; }
 .header { font-weight:600; }
 .cell { height:42px; border-radius:10px; border:1px solid #ccc; }
-.available { background:#fff; cursor:pointer; }
+.available { background:#ffffff; cursor:pointer; }
 .selected { background:#009fdf; }
 .booked { background:#c0392b; cursor:not-allowed; }
 .past { background:#2c2c2c; cursor:not-allowed; }
@@ -136,7 +139,6 @@ const grid = document.getElementById("grid");
 let selected = new Set();
 let dragging = false;
 
-// Write selection into hidden Streamlit input
 function pushSelection() {
   const input = window.parent.document.querySelector(
     'input[aria-label="selected_cells_hidden"]'
@@ -210,11 +212,12 @@ if st.button("Confirm booking", type="primary"):
         st.warning("Please select a desk and time slot in the grid first.")
         st.stop()
 
-    # Group by desk
     by_desk = {}
     for cell in selected_cells:
         desk_id, t = cell.split("_")
-        by_desk.setdefault(int(desk_id), []).append(time.fromisoformat(t))
+        by_desk.setdefault(int(desk_id), []).append(
+            time.fromisoformat(t)
+        )
 
     conn = get_conn()
 
@@ -226,7 +229,6 @@ if st.button("Confirm booking", type="primary"):
             + timedelta(minutes=STEP)
         ).time()
 
-        # Conflict check
         conflict = conn.execute(
             """
             SELECT 1
