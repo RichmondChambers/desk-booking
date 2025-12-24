@@ -14,7 +14,7 @@ st.session_state.setdefault("user_id", 1)  # temporary safe default
 st.markdown(
     """
     <style>
-    input#selected_cells_hidden {
+    div[data-testid="stTextInput"]:has(input#selected_cells_hidden) {
         display: none;
     }
     </style>
