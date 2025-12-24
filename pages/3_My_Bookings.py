@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date
 from utils.db import get_conn
-from utils.audit import audit_log
+from utils.audit import log_action
 from utils.dates import uk_date
 
 # ---------------------------------------------------
@@ -95,8 +95,7 @@ else:
                     (booking_id, user_id),
                 )
 
-                audit_log(
-                    st.session_state.user_email,
+                log_action(
                     "BOOKING_CANCELLED",
                     f"booking_id={booking_id}, desk_id={desk_id}",
                 )
