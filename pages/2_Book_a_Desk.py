@@ -236,8 +236,8 @@ st.subheader("Confirm booking")
 
 if st.button("Confirm booking", type="primary"):
     if not selected_cells:
-    st.warning("Please select a desk and time slot in the grid first.")
-    st.stop()
+        st.warning("Please select a desk and time slot in the grid first.")
+        st.stop()
 
     # Group selected cells by desk
     by_desk = {}
