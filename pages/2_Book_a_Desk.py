@@ -137,6 +137,8 @@ html, body { margin:0; padding:0; font-family:inherit; }
 }
 </style>
 
+<script src="https://unpkg.com/streamlit-component-lib/dist/index.js"></script>
+
 <div id="info">Hover over a slot to see details.</div>
 <div class="grid" id="grid"></div>
 
