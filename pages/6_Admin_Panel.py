@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from utils.db import get_conn
-from utils.permissions import require_admin
+from utils.auth import require_admin
 from utils.audit import log_action
 
 st.set_page_config(page_title="Admin Panel", layout="wide")
@@ -13,6 +13,15 @@ st.set_page_config(page_title="Admin Panel", layout="wide")
 require_admin()
 
 st.title("Admin Panel")
+
+# ---------------------------------------------------
+# DB HELPER
+# ---------------------------------------------------
+def run_db(query, params=()):
+    conn = get_conn()
+    conn.execute(query, params)
+    conn.commit()
+    conn.close()
 
 # ---------------------------------------------------
 # LOAD USERS
@@ -50,18 +59,12 @@ for user_id, name, email, role, can_book, is_active in users:
             if role == "admin":
                 if st.button("Remove admin", key=f"remove_admin_{user_id}", disabled=is_self):
                     log_action("REMOVE_ADMIN", f"Removed admin role from {email}")
-                    conn = get_conn()
-                    conn.execute("UPDATE users SET role='user' WHERE id=?", (user_id,))
-                    conn.commit()
-                    conn.close()
+                    run_db("UPDATE users SET role='user' WHERE id=?", (user_id,))
                     st.rerun()
             else:
                 if st.button("Make admin", key=f"make_admin_{user_id}", disabled=is_self):
                     log_action("PROMOTE_TO_ADMIN", f"Promoted {email} to admin")
-                    conn = get_conn()
-                    conn.execute("UPDATE users SET role='admin' WHERE id=?", (user_id,))
-                    conn.commit()
-                    conn.close()
+                    run_db("UPDATE users SET role='admin' WHERE id=?", (user_id,))
                     st.rerun()
 
             # BOOKING PERMISSION
@@ -71,13 +74,10 @@ for user_id, name, email, role, can_book, is_active in users:
                     "TOGGLE_CAN_BOOK",
                     f"{'Disabled' if can_book else 'Enabled'} booking for {email}",
                 )
-                conn = get_conn()
-                conn.execute(
+                run_db(
                     "UPDATE users SET can_book=? WHERE id=?",
                     (0 if can_book else 1, user_id),
                 )
-                conn.commit()
-                conn.close()
                 st.rerun()
 
             # ACTIVE STATUS
@@ -87,23 +87,20 @@ for user_id, name, email, role, can_book, is_active in users:
                     "TOGGLE_ACTIVE",
                     f"{'Deactivated' if is_active else 'Activated'} user {email}",
                 )
-                conn = get_conn()
                 if is_active:
-                    conn.execute(
+                    run_db(
                         "UPDATE users SET is_active=0, can_book=0 WHERE id=?",
                         (user_id,),
                     )
                 else:
-                    conn.execute(
+                    run_db(
                         "UPDATE users SET is_active=1 WHERE id=?",
                         (user_id,),
                     )
-                conn.commit()
-                conn.close()
                 st.rerun()
 
 # ===================================================
-# DESK MANAGEMENT  ⭐ NEW SECTION ⭐
+# DESK MANAGEMENT
 # ===================================================
 st.divider()
 st.subheader("Desk Management")
@@ -129,16 +126,13 @@ with st.expander("Add new desk"):
             st.error("Desk name is required.")
         else:
             log_action("CREATE_DESK", f"Created desk '{desk_name}'")
-            conn = get_conn()
-            conn.execute(
+            run_db(
                 """
                 INSERT INTO desks (name, location, admin_only)
                 VALUES (?, ?, ?)
                 """,
                 (desk_name, desk_location, int(desk_admin_only)),
             )
-            conn.commit()
-            conn.close()
             st.success("Desk created.")
             st.rerun()
 
@@ -153,7 +147,6 @@ for desk_id, name, location, is_active, admin_only in desks:
         col4.markdown(f"Admin only: **{'Yes' if admin_only else 'No'}**")
 
         with col5:
-            # Toggle active
             if st.button(
                 "Disable" if is_active else "Enable",
                 key=f"toggle_desk_active_{desk_id}",
@@ -162,31 +155,24 @@ for desk_id, name, location, is_active, admin_only in desks:
                     "TOGGLE_DESK_ACTIVE",
                     f"{'Disabled' if is_active else 'Enabled'} desk '{name}'",
                 )
-                conn = get_conn()
-                conn.execute(
+                run_db(
                     "UPDATE desks SET is_active=? WHERE id=?",
                     (0 if is_active else 1, desk_id),
                 )
-                conn.commit()
-                conn.close()
                 st.rerun()
 
-            # Toggle admin-only
             if st.button(
                 "Remove admin-only" if admin_only else "Make admin-only",
                 key=f"toggle_desk_admin_{desk_id}",
             ):
                 log_action(
                     "TOGGLE_DESK_ADMIN_ONLY",
-                    f"{'Restricted' if not admin_only else 'Unrestricted'} desk '{name}'",
+                    f"{'Unrestricted' if admin_only else 'Restricted'} desk '{name}'",
                 )
-                conn = get_conn()
-                conn.execute(
+                run_db(
                     "UPDATE desks SET admin_only=? WHERE id=?",
                     (0 if admin_only else 1, desk_id),
                 )
-                conn.commit()
-                conn.close()
                 st.rerun()
 
 # ---------------------------------------------------
@@ -198,16 +184,26 @@ st.subheader("All Bookings")
 conn = get_conn()
 bookings = conn.execute(
     """
-    SELECT id, user_id, desk_id, date, start_time, end_time, status, checked_in
-    FROM bookings
-    ORDER BY date DESC
+    SELECT
+        b.id,
+        u.email,
+        d.name AS desk,
+        b.date,
+        b.start_time,
+        b.end_time,
+        b.status,
+        b.checked_in
+    FROM bookings b
+    JOIN users u ON b.user_id = u.id
+    JOIN desks d ON b.desk_id = d.id
+    ORDER BY b.date DESC
     """
 ).fetchall()
 conn.close()
 
 df_bookings = pd.DataFrame(
     bookings,
-    columns=["ID", "User ID", "Desk", "Date", "Start", "End", "Status", "Checked In"],
+    columns=["ID", "User", "Desk", "Date", "Start", "End", "Status", "Checked In"],
 )
 st.dataframe(df_bookings, use_container_width=True)
 
