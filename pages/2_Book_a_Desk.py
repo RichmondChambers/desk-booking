@@ -44,7 +44,7 @@ DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # --------------------------------------------------
-# TIME SLOTS (09:00 → 18:00)
+# TIME SLOTS (09:00 → 18:00, INCLUDING 18:00 ROW)
 # --------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
@@ -54,12 +54,16 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur < end_dt:
+# ✅ CHANGED: include END time so 18:00 appears
+while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
 def is_past(t: time) -> bool:
-    return selected_date == date.today() and datetime.combine(selected_date, t) < datetime.now()
+    return (
+        selected_date == date.today()
+        and datetime.combine(selected_date, t) < datetime.now()
+    )
 
 # --------------------------------------------------
 # LOAD BOOKINGS (READ-ONLY)
