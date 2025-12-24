@@ -54,16 +54,6 @@ for user_id, name, email, role, can_book, is_active in users:
         col4.markdown(f"Can book: **{'Yes' if can_book else 'No'}**")
         col5.markdown(f"Active: **{'Yes' if is_active else 'No'}**")
 
-    log_action(
-        "DELETE_DESK",
-        f"Deleted desk '{name}' and all associated bookings",
-    )
-
-    run_db("DELETE FROM bookings WHERE desk_id = ?", (desk_id,))
-    run_db("DELETE FROM desks WHERE id = ?", (desk_id,))
-
-    st.success(f"Desk '{name}' deleted (including bookings).")
-
         with col6:
             # ROLE TOGGLE
             if role == "admin":
