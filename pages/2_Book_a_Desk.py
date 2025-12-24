@@ -11,6 +11,17 @@ st.title("Book a Desk")
 # --------------------------------------------------
 st.session_state.setdefault("user_id", 1)  # temporary safe default
 
+st.markdown(
+    """
+    <style>
+    input#selected_cells_hidden {
+        display: none;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --------------------------------------------------
 # HIDDEN INPUT BRIDGE (FOR GRID SELECTION)
 # --------------------------------------------------
