@@ -3,7 +3,7 @@ import requests
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
-from utils.db import init_db, seed_desks, make_admin, get_conn
+from utils.db import init_db, seed_desks, get_conn
 
 # ---------------------------------------------------
 # STREAMLIT CONFIG
@@ -11,13 +11,17 @@ from utils.db import init_db, seed_desks, make_admin, get_conn
 st.set_page_config(page_title="Desk Booking", layout="wide")
 
 # ---------------------------------------------------
+# BOOTSTRAP ADMINS (CANNOT BE LOST)
+# ---------------------------------------------------
+BOOTSTRAP_ADMINS = {
+    "paul.richmond@richmondchambers.com",
+}
+
+# ---------------------------------------------------
 # INITIALISE DATABASE + SEED DATA
 # ---------------------------------------------------
 init_db()
 seed_desks()
-
-# 🔑 TEMPORARY: PROMOTE YOURSELF TO ADMIN
-make_admin("paul.richmond@richmondchambers.com")
 
 # ---------------------------------------------------
 # LOGOUT FUNCTION
@@ -49,7 +53,6 @@ if "code" in query_params and "oauth_email" not in st.session_state:
             "web": {
                 "client_id": st.secrets["oauth"]["client_id"],
                 "client_secret": st.secrets["oauth"]["client_secret"],
-                # ✅ v2 endpoint
                 "auth_uri": "https://accounts.google.com/o/oauth2/v2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
                 "redirect_uris": [st.secrets["oauth"]["redirect_uri"]],
@@ -75,7 +78,7 @@ if "code" in query_params and "oauth_email" not in st.session_state:
     email = (userinfo.get("email") or "").lower()
     name = userinfo.get("name") or email.split("@")[0]
 
-    # ✅ Enforce domain AFTER login
+    # Restrict domain AFTER login
     if not email.endswith("@richmondchambers.com"):
         st.error("Access restricted to Richmond Chambers staff.")
         st.stop()
@@ -103,6 +106,7 @@ st.session_state.setdefault("can_book", 1)
 # MAP OAUTH USER → LOCAL USER RECORD
 # ---------------------------------------------------
 if st.session_state.user_id is None:
+
     email = st.session_state["oauth_email"]
     name = st.session_state["oauth_name"]
 
@@ -120,12 +124,14 @@ if st.session_state.user_id is None:
 
     # FIRST LOGIN → CREATE USER
     if not row:
+        initial_role = "admin" if email in BOOTSTRAP_ADMINS else "user"
+
         c.execute(
             """
             INSERT INTO users (name, email, role, can_book, is_active)
-            VALUES (?, ?, 'user', 1, 1)
+            VALUES (?, ?, ?, 1, 1)
             """,
-            (name, email),
+            (name, email, initial_role),
         )
         conn.commit()
 
@@ -147,15 +153,29 @@ if st.session_state.user_id is None:
         )
         st.stop()
 
+    db_role = row[2]
+
+    # 🔒 BOOTSTRAP OVERRIDE ALWAYS WINS
+    if email in BOOTSTRAP_ADMINS:
+        final_role = "admin"
+
+        # Optional: keep DB in sync
+        if db_role != "admin":
+            c.execute(
+                "UPDATE users SET role='admin' WHERE email=?",
+                (email,),
+            )
+            conn.commit()
+    else:
+        final_role = db_role
+
     conn.close()
 
     st.session_state.user_id = row[0]
     st.session_state.user_name = row[1]
     st.session_state.user_email = email
+    st.session_state.role = final_role
     st.session_state.can_book = row[3]
-
-    if st.session_state.role != "admin":
-        st.session_state.role = row[2]
 
 # ---------------------------------------------------
 # SIDEBAR
