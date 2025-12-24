@@ -223,6 +223,8 @@ document.onmouseup = () => dragging = false;
 """ % (len(DESK_IDS), json.dumps(payload))
 
 selected_cells = st.components.v1.html(html, height=1200)
+
+# Ensure selected_cells is always iterable
 if not isinstance(selected_cells, list):
     selected_cells = []
 
