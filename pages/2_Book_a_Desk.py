@@ -14,7 +14,8 @@ st.session_state.setdefault("user_id", 1)  # temporary safe default
 st.markdown(
     """
     <style>
-    div[data-testid="stTextInput"]:has(input#selected_cells_hidden) {
+    /* Hide the FIRST text input only (your hidden bridge) */
+    div[data-testid="stTextInput"] {
         display: none;
     }
     </style>
