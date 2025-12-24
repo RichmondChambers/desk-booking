@@ -54,6 +54,21 @@ for user_id, name, email, role, can_book, is_active in users:
         col4.markdown(f"Can book: **{'Yes' if can_book else 'No'}**")
         col5.markdown(f"Active: **{'Yes' if is_active else 'No'}**")
 
+        if st.button(
+    "Delete permanently",
+    key=f"delete_desk_{desk_id}",
+):
+    log_action(
+        "DELETE_DESK",
+        f"Deleted desk '{name}' and all associated bookings",
+    )
+
+    run_db("DELETE FROM bookings WHERE desk_id = ?", (desk_id,))
+    run_db("DELETE FROM desks WHERE id = ?", (desk_id,))
+
+    st.success(f"Desk '{name}' deleted (including bookings).")
+    st.rerun()
+
         with col6:
             # ROLE TOGGLE
             if role == "admin":
@@ -147,6 +162,7 @@ for desk_id, name, location, is_active, admin_only in desks:
         col4.markdown(f"Admin only: **{'Yes' if admin_only else 'No'}**")
 
         with col5:
+            # Enable / Disable desk
             if st.button(
                 "Disable" if is_active else "Enable",
                 key=f"toggle_desk_active_{desk_id}",
@@ -161,6 +177,7 @@ for desk_id, name, location, is_active, admin_only in desks:
                 )
                 st.rerun()
 
+            # Admin-only toggle
             if st.button(
                 "Remove admin-only" if admin_only else "Make admin-only",
                 key=f"toggle_desk_admin_{desk_id}",
@@ -173,6 +190,27 @@ for desk_id, name, location, is_active, admin_only in desks:
                     "UPDATE desks SET admin_only=? WHERE id=?",
                     (0 if admin_only else 1, desk_id),
                 )
+                st.rerun()
+
+            # ---- DELETE DESK COMPLETELY ----
+            confirm = st.checkbox(
+                "Confirm delete",
+                key=f"confirm_delete_{desk_id}",
+            )
+
+            if confirm and st.button(
+                "Delete permanently",
+                key=f"delete_desk_{desk_id}",
+            ):
+                log_action(
+                    "DELETE_DESK",
+                    f"Deleted desk '{name}' and all associated bookings",
+                )
+
+                run_db("DELETE FROM bookings WHERE desk_id = ?", (desk_id,))
+                run_db("DELETE FROM desks WHERE id = ?", (desk_id,))
+
+                st.success(f"Desk '{name}' deleted (including bookings).")
                 st.rerun()
 
 # ---------------------------------------------------
