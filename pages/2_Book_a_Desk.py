@@ -2,46 +2,21 @@ import streamlit as st
 from datetime import datetime, date, time, timedelta
 from utils.db import get_conn
 import json
+import urllib.parse
 
 st.set_page_config(page_title="Book a Desk", layout="wide")
 st.title("Book a Desk")
 
 # --------------------------------------------------
-# SESSION SAFETY (MINIMAL)
+# SESSION SAFETY
 # --------------------------------------------------
-st.session_state.setdefault("user_id", 1)  # temporary safe default
-
-st.markdown(
-    """
-    <style>
-    /* Hide the hidden input visually BUT keep it usable for JS */
-    div[data-testid="stTextInput"] {
-        visibility: hidden;
-        height: 0;
-        margin: 0;
-        padding: 0;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.session_state.setdefault("user_id", 1)
 
 # --------------------------------------------------
-# HIDDEN INPUT BRIDGE (FOR GRID SELECTION)
+# READ GRID SELECTION FROM QUERY PARAMS
 # --------------------------------------------------
-selected_cells_str = st.text_input(
-    "selected_cells_hidden",            # IMPORTANT: label is used in DOM aria-label
-    value="",
-    key="selected_cells_hidden",
-    label_visibility="collapsed",
-)
-
-if selected_cells_str:
-    selected_cells = selected_cells_str.split(",")
-else:
-    selected_cells = []
-
-st.caption(f"DEBUG selected_cells_str: {selected_cells_str!r}")
+selected_cells_param = st.query_params.get("selected", "")
+selected_cells = selected_cells_param.split(",") if selected_cells_param else []
 
 # --------------------------------------------------
 # DATE PICKER
@@ -69,14 +44,14 @@ desks = conn.execute(
 conn.close()
 
 if not desks:
-    st.error("No desks found in database.")
+    st.error("No desks found.")
     st.stop()
 
 DESK_IDS = [d[0] for d in desks]
 DESK_NAMES = {d[0]: d[1] for d in desks}
 
 # --------------------------------------------------
-# TIME SLOTS (09:00 → 18:00, INCLUDING 18:00 ROW)
+# TIME SLOTS
 # --------------------------------------------------
 START = time(9, 0)
 END = time(18, 0)
@@ -90,14 +65,11 @@ while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
-def is_past(t: time) -> bool:
-    return (
-        selected_date == date.today()
-        and datetime.combine(selected_date, t) < datetime.now()
-    )
+def is_past(t):
+    return selected_date == date.today() and datetime.combine(selected_date, t) < datetime.now()
 
 # --------------------------------------------------
-# LOAD BOOKINGS (READ-ONLY)
+# LOAD BOOKINGS
 # --------------------------------------------------
 conn = get_conn()
 rows = conn.execute(
@@ -133,140 +105,70 @@ payload = {
         if is_past(t)
     ],
     "dateLabel": selected_date.strftime("%d/%m/%Y"),
+    "selected": selected_cells,
 }
 
 # --------------------------------------------------
 # GRID HTML
 # --------------------------------------------------
 html = """
-<style>
-html, body { margin:0; padding:0; font-family:inherit; }
-* { box-sizing:border-box; font-family:inherit; }
-
-.grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
-.time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
-.header { font-weight:600; }
-
-.cell {
-  height:42px;
-  border-radius:10px;
-  border:1px solid rgba(255,255,255,0.25);
-}
-
-.available { background:#ffffff; cursor:pointer; }
-.available:hover { outline:2px solid #009fdf; }
-.selected { background:#009fdf !important; }
-.booked { background:#c0392b; cursor:not-allowed; }
-.past { background:#2c2c2c; cursor:not-allowed; }
-
-#info {
-  margin-bottom:12px;
-  padding:10px 14px;
-  border-radius:10px;
-  background:rgba(255,255,255,0.08);
-  color:#e5e7eb;
-}
-</style>
-
-<div id="info">Hover over a slot to see details.</div>
-<div class="grid" id="grid"></div>
+<div class="grid"></div>
 
 <script>
-(function syncFont() {
-  try {
-    const f = window.parent.getComputedStyle(window.parent.document.body).fontFamily;
-    document.body.style.fontFamily = f;
-  } catch(e){}
-})();
-
 const data = %s;
-const grid = document.getElementById("grid");
-const info = document.getElementById("info");
+const grid = document.querySelector(".grid");
+let selected = new Set(data.selected);
 
-let selected = new Set();
-let dragging = false;
-
-function status(key) {
-  if (data.booked.includes(key)) return "Booked";
-  if (data.past.includes(key)) return "Past";
-  return "Available";
+function updateURL() {
+  const params = new URLSearchParams(window.location.search);
+  params.set("selected", Array.from(selected).join(","));
+  window.history.replaceState({}, "", "?" + params.toString());
 }
 
-// Push selection into hidden Streamlit input
-function pushSelection() {
-  const doc = window.parent.document;
+grid.style.display = "grid";
+grid.style.gridTemplateColumns = "90px repeat(" + data.desks.length + ",1fr)";
+grid.style.gap = "10px";
 
-  // Streamlit reliably sets aria-label from the widget label text
-  const input =
-    doc.querySelector('input[aria-label="selected_cells_hidden"]') ||
-    doc.querySelector('textarea[aria-label="selected_cells_hidden"]');
-
-  if (!input) return;
-
-  input.value = Array.from(selected).join(",");
-
-  // Trigger both input and change to satisfy Streamlit’s listeners
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
-// Header
+// header
 grid.appendChild(document.createElement("div"));
 data.desks.forEach(d => {
   const h = document.createElement("div");
-  h.className = "header";
-  h.innerText = data.deskNames[d];
+  h.textContent = data.deskNames[d];
   grid.appendChild(h);
 });
 
-// Rows
+// rows
 data.times.forEach(t => {
   const tl = document.createElement("div");
-  tl.className = "time";
-  tl.innerText = t;
+  tl.textContent = t;
   grid.appendChild(tl);
 
   data.desks.forEach(d => {
     const key = d + "_" + t;
     const c = document.createElement("div");
+    c.style.height = "36px";
+    c.style.border = "1px solid #ccc";
 
-    if (data.booked.includes(key)) c.className = "cell booked";
-    else if (data.past.includes(key)) c.className = "cell past";
-    else c.className = "cell available";
+    if (data.booked.includes(key) || data.past.includes(key)) {
+      c.style.background = "#aaa";
+    } else {
+      c.style.cursor = "pointer";
+      if (selected.has(key)) c.style.background = "#009fdf";
 
-    c.onmouseenter = () => {
-      info.innerText =
-        `${data.dateLabel} · ${data.deskNames[d]} · ${t} · ${status(key)}`;
-    };
-
-    c.onmousedown = () => {
-      if (!c.classList.contains("available")) return;
-      dragging = true;
-      toggle(c);
-    };
-    c.onmouseover = () => dragging && toggle(c);
-    c.onmouseup = () => dragging = false;
-
-    function toggle(cell) {
-      if (cell.classList.contains("selected")) {
-        cell.classList.remove("selected");
-        selected.delete(key);
-      } else {
-        cell.classList.add("selected");
-        selected.add(key);
-      }
-      pushSelection();
+      c.onclick = () => {
+        if (selected.has(key)) selected.delete(key);
+        else selected.add(key);
+        updateURL();
+        location.reload();
+      };
     }
-
     grid.appendChild(c);
   });
 });
-
-document.onmouseup = () => dragging = false;
 </script>
-""" % (len(DESK_IDS), json.dumps(payload))
+""" % json.dumps(payload)
 
-st.components.v1.html(html, height=1200)
+st.components.v1.html(html, height=1000)
 
 # --------------------------------------------------
 # CONFIRM BOOKING
@@ -276,52 +178,21 @@ st.subheader("Confirm booking")
 
 if st.button("Confirm booking", type="primary"):
     if not selected_cells:
-        st.warning("Please select a desk and time slot in the grid first.")
+        st.warning("Please select a desk and time slot.")
         st.stop()
 
-    # Group selected cells by desk
     by_desk = {}
     for cell in selected_cells:
         desk_id, t = cell.split("_")
-        by_desk.setdefault(int(desk_id), []).append(
-            time.fromisoformat(t)
-        )
+        by_desk.setdefault(int(desk_id), []).append(time.fromisoformat(t))
 
     conn = get_conn()
 
     for desk_id, times in by_desk.items():
         times.sort()
         start = times[0]
-        end = (
-            datetime.combine(selected_date, times[-1])
-            + timedelta(minutes=STEP)
-        ).time()
+        end = (datetime.combine(selected_date, times[-1]) + timedelta(minutes=STEP)).time()
 
-        # Conflict check
-        conflict = conn.execute(
-            """
-            SELECT 1
-            FROM bookings
-            WHERE desk_id = ?
-              AND date = ?
-              AND status = 'booked'
-              AND start_time < ?
-              AND end_time > ?
-            """,
-            (
-                desk_id,
-                date_iso,
-                end.isoformat(),
-                start.isoformat(),
-            ),
-        ).fetchone()
-
-        if conflict:
-            conn.close()
-            st.error(f"Desk {desk_id} is already booked for that time.")
-            st.stop()
-
-        # Insert booking
         conn.execute(
             """
             INSERT INTO bookings
@@ -341,4 +212,5 @@ if st.button("Confirm booking", type="primary"):
     conn.close()
 
     st.success("Booking confirmed.")
+    st.query_params.clear()
     st.rerun()
