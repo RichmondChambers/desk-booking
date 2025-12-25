@@ -14,9 +14,12 @@ st.session_state.setdefault("user_id", 1)  # temporary safe default
 st.markdown(
     """
     <style>
-    /* Hide the FIRST text input only (your hidden bridge) */
+    /* Hide the hidden input visually BUT keep it usable for JS */
     div[data-testid="stTextInput"] {
-        display: none;
+        visibility: hidden;
+        height: 0;
+        margin: 0;
+        padding: 0;
     }
     </style>
     """,
