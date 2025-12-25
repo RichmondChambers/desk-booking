@@ -1,16 +1,25 @@
 import streamlit as st
 from datetime import datetime, date, time, timedelta
-from utils.db import get_conn
+from utils.db import get_conn, init_db
 import json
 import urllib.parse
 
+# --------------------------------------------------
+# PAGE SETUP
+# --------------------------------------------------
 st.set_page_config(page_title="Book a Desk", layout="wide")
 st.title("Book a Desk")
 
 # --------------------------------------------------
+# ENSURE DATABASE IS INITIALISED
+# --------------------------------------------------
+# This MUST run before any SELECT/INSERT queries
+init_db()
+
+# --------------------------------------------------
 # SESSION SAFETY
 # --------------------------------------------------
-st.session_state.setdefault("user_id", 1)
+st.session_state.setdefault("user_id", 1)  # temporary safe default
 
 # --------------------------------------------------
 # READ GRID SELECTION FROM QUERY PARAMS
