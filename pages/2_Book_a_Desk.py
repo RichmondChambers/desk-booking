@@ -30,7 +30,7 @@ st.markdown(
 # HIDDEN INPUT BRIDGE (FOR GRID SELECTION)
 # --------------------------------------------------
 selected_cells_str = st.text_input(
-    "",
+    "selected_cells_hidden",            # IMPORTANT: label is used in DOM aria-label
     value="",
     key="selected_cells_hidden",
     label_visibility="collapsed",
@@ -40,6 +40,8 @@ if selected_cells_str:
     selected_cells = selected_cells_str.split(",")
 else:
     selected_cells = []
+
+st.caption(f"DEBUG selected_cells_str: {selected_cells_str!r}")
 
 # --------------------------------------------------
 # DATE PICKER
@@ -192,12 +194,20 @@ function status(key) {
 
 // Push selection into hidden Streamlit input
 function pushSelection() {
-  const input = window.parent.document.getElementById(
-  "selected_cells_hidden"
-);
+  const doc = window.parent.document;
+
+  // Streamlit reliably sets aria-label from the widget label text
+  const input =
+    doc.querySelector('input[aria-label="selected_cells_hidden"]') ||
+    doc.querySelector('textarea[aria-label="selected_cells_hidden"]');
+
   if (!input) return;
+
   input.value = Array.from(selected).join(",");
+
+  // Trigger both input and change to satisfy Streamlit’s listeners
   input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 // Header
