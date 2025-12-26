@@ -10,7 +10,7 @@ DB_PATH = Path(
     )
 ).expanduser()
 
-DB_PATH.parent.mkdir(exist_ok=True)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
