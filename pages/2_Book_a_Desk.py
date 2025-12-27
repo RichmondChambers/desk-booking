@@ -1,11 +1,23 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from datetime import datetime, date, time, timedelta
-import json
+from pathlib import Path
 
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
 from utils.styles import apply_lato_font
+
+import streamlit.components.v1 as components
+
+# --------------------------------------------------
+# STREAMLIT COMPONENT DECLARATION
+# --------------------------------------------------
+desk_booking_component = components.declare_component(
+    "desk_booking_component",
+    path=str(Path(__file__).parent / "desk_booking_component"),
+)
+
+def desk_booking_grid(payload, height=520):
+    return desk_booking_component(data=payload, height=height)
 
 # --------------------------------------------------
 # PAGE SETUP
@@ -121,99 +133,9 @@ payload = {
 }
 
 # --------------------------------------------------
-# GRID HTML + JS (STREAMLIT COMPONENT)
+# RENDER GRID (REAL COMPONENT)
 # --------------------------------------------------
-html = f"""
-<style>
-.grid {{
-  display:grid;
-  grid-template-columns:90px repeat({len(DESK_IDS)},1fr);
-  gap:12px;
-  font-family: sans-serif;
-}}
-.time,.header {{ text-align:center; font-size:14px; }}
-.header {{ font-weight:600; }}
-.cell {{
-  height:42px;
-  border-radius:10px;
-  border:1px solid #ccc;
-}}
-.available {{ background:#fff; cursor:pointer; }}
-.available:hover {{ outline:2px solid #009fdf; }}
-.selected {{ background:#009fdf !important; }}
-.booked {{ background:#c0392b; cursor:not-allowed; }}
-.past {{ background:#2c2c2c; cursor:not-allowed; }}
-</style>
-
-<div class="grid" id="grid"></div>
-
-<script>
-const data = {json.dumps(payload)};
-const grid = document.getElementById("grid");
-
-let selected = new Set();
-let dragging = false;
-
-function pushSelection() {{
-  Streamlit.setComponentValue(Array.from(selected));
-}}
-
-// Header
-grid.appendChild(document.createElement("div"));
-data.desks.forEach(d => {{
-  const h = document.createElement("div");
-  h.className = "header";
-  h.innerText = data.deskNames[d];
-  grid.appendChild(h);
-}});
-
-// Rows
-data.times.forEach(t => {{
-  const tl = document.createElement("div");
-  tl.className = "time";
-  tl.innerText = t;
-  grid.appendChild(tl);
-
-  data.desks.forEach(d => {{
-    const key = d + "_" + t;
-    const c = document.createElement("div");
-
-    if (data.booked.includes(key)) c.className = "cell booked";
-    else if (data.past.includes(key)) c.className = "cell past";
-    else c.className = "cell available";
-
-    c.onmousedown = () => {{
-      if (!c.classList.contains("available")) return;
-      dragging = true;
-      toggle(c);
-    }};
-
-    c.onmouseover = () => dragging && toggle(c);
-    c.onmouseup = () => dragging = false;
-
-    function toggle(cell) {{
-      if (cell.classList.contains("selected")) {{
-        cell.classList.remove("selected");
-        selected.delete(key);
-      }} else {{
-        cell.classList.add("selected");
-        selected.add(key);
-      }}
-      pushSelection();
-    }}
-
-    grid.appendChild(c);
-  }});
-}});
-
-document.onmouseup = () => dragging = false;
-</script>
-"""
-
-# --------------------------------------------------
-# RENDER GRID & RECEIVE SELECTION
-# --------------------------------------------------
-selected_cells = components.html(html, height=500) or []
+selected_cells = desk_booking_grid(payload) or []
 
 # --------------------------------------------------
 # CONFIRM BOOKING
@@ -252,7 +174,10 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
             st.stop()
 
         start = times[0]
-        end = (datetime.combine(selected_date, times[-1]) + timedelta(minutes=STEP)).time()
+        end = (
+            datetime.combine(selected_date, times[-1])
+            + timedelta(minutes=STEP)
+        ).time()
 
         conflict = conn.execute(
             """
