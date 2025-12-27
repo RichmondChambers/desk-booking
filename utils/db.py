@@ -37,11 +37,11 @@ def _resolve_db_path() -> Path:
     if secret_path:
         return Path(secret_path)
 
-    if DEFAULT_DB_PATH.exists():
-        return DEFAULT_DB_PATH
-
     if PERSISTENT_DATA_DIR.is_dir():
         return PERSISTENT_DATA_DIR / "desk-booking.db"
+
+    if DEFAULT_DB_PATH.exists():
+        return DEFAULT_DB_PATH
 
     return Path.home() / ".desk-booking" / "data.db"
 
