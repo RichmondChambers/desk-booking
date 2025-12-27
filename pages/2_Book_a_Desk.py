@@ -25,6 +25,47 @@ if not user_id or not can_book:
     st.stop()
 
 # --------------------------------------------------
+# HIDDEN INPUT BRIDGE (FOR GRID SELECTION)
+# --------------------------------------------------
+selected_cells_str = st.text_input(
+    "selected_cells_hidden",
+    value="",
+    key="selected_cells_hidden",
+    label_visibility="collapsed",
+)
+
+selected_cells = (
+    selected_cells_str.split(",") if selected_cells_str else []
+)
+
+st.markdown(
+    """
+    <script>
+    if (!window.deskBookingSelectionListenerAdded) {
+      window.deskBookingSelectionListenerAdded = true;
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "desk-booking-selection") {
+          return;
+        }
+        const input =
+          document.querySelector('input[aria-label="selected_cells_hidden"]') ||
+          document.querySelector('textarea[aria-label="selected_cells_hidden"]');
+        if (!input) return;
+        const value = Array.isArray(event.data.value)
+          ? event.data.value.join(",")
+          : "";
+        if (input.value === value) return;
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
+
+# --------------------------------------------------
 # DATE PICKER
 # --------------------------------------------------
 selected_date = st.date_input("Select date", format="DD/MM/YYYY")
@@ -172,40 +213,12 @@ function status(key) {
   return "Available";
 }
 
-function sendToStreamlit(value) {
-  window.parent.postMessage(
-    {
-      isStreamlitMessage: true,
-      type: "streamlit:setComponentValue",
-      value: value,
-    },
-    "*"
-  );
-}
-
-function setFrameHeight() {
-  window.parent.postMessage(
-    {
-      isStreamlitMessage: true,
-      type: "streamlit:setFrameHeight",
-      height: document.documentElement.scrollHeight,
-    },
-    "*"
-  );
-}
-
-window.parent.postMessage(
-  { isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 },
-  "*"
-);
-
-window.addEventListener("load", () => {
-  sendToStreamlit(Array.from(selected));
-  setFrameHeight();
-});
-
 function pushSelection() {
-  sendToStreamlit(Array.from(selected));
+  const value = Array.from(selected);
+  window.parent.postMessage(
+    { type: "desk-booking-selection", value },
+    "*"
+  );
 }
 
 // Header row
@@ -265,17 +278,7 @@ document.onmouseup = () => dragging = false;
 </script>
 """ % (len(DESK_IDS), json.dumps(payload))
 
-selected_cells = components.html(
-    html,
-    height=1200,
-    key=f"booking_grid_{date_iso}",
-)
-if not selected_cells:
-    selected_cells = []
-elif isinstance(selected_cells, str):
-    selected_cells = [
-        cell for cell in selected_cells.split(",") if cell
-    ]
+st.html(html, unsafe_allow_javascript=True)
 
 # --------------------------------------------------
 # CONFIRM BOOKING
