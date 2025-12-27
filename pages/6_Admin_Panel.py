@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from utils.db import get_conn
+from utils.db import get_conn, write_desks_backup
 from utils.auth import require_admin
 from utils.audit import log_action
 
@@ -133,6 +133,7 @@ with st.expander("Add new desk"):
                 """,
                 (desk_name, desk_location, int(desk_admin_only)),
             )
+            write_desks_backup()
             st.success("Desk created.")
             st.rerun()
 
@@ -160,6 +161,7 @@ for desk_id, name, location, is_active, admin_only in desks:
                     "UPDATE desks SET is_active=? WHERE id=?",
                     (0 if is_active else 1, desk_id),
                 )
+                write_desks_backup()
                 st.rerun()
 
             # Admin-only toggle
@@ -175,6 +177,7 @@ for desk_id, name, location, is_active, admin_only in desks:
                     "UPDATE desks SET admin_only=? WHERE id=?",
                     (0 if admin_only else 1, desk_id),
                 )
+                write_desks_backup()
                 st.rerun()
 
             # ---- DELETE DESK COMPLETELY ----
@@ -194,6 +197,7 @@ for desk_id, name, location, is_active, admin_only in desks:
 
                 run_db("DELETE FROM bookings WHERE desk_id = ?", (desk_id,))
                 run_db("DELETE FROM desks WHERE id = ?", (desk_id,))
+                write_desks_backup()
 
                 st.success(f"Desk '{name}' deleted (including bookings).")
                 st.rerun()
