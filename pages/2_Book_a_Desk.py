@@ -17,7 +17,7 @@ if not component_root.exists():
 
 desk_booking_component = components.declare_component(
     "desk_booking_component",
-    path=str(component_root),
+    path=str(Path(__file__).resolve().parent.parent / "desk_booking_component"),
 )
 
 def desk_booking_grid(payload, height=520):
