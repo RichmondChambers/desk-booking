@@ -2,7 +2,6 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
 import streamlit as st
 
@@ -11,6 +10,10 @@ DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
 PERSISTENT_DATA_DIR = Path("/data")
 BACKUP_PATH = Path.home() / ".desk-booking" / "desks.json"
 
+
+# ---------------------------------------------------
+# DATABASE PATH RESOLUTION
+# ---------------------------------------------------
 def _secret_db_path() -> str | None:
     if not hasattr(st, "secrets"):
         return None
@@ -24,6 +27,7 @@ def _secret_db_path() -> str | None:
         return db_config.get("path")
 
     return None
+
 
 def _resolve_db_path() -> Path:
     env_path = os.getenv("DESK_BOOKING_DB_PATH")
@@ -42,12 +46,26 @@ def _resolve_db_path() -> Path:
 
     return Path.home() / ".desk-booking" / "data.db"
 
-DB_PATH = _resolve_db_path().expanduser()
 
+DB_PATH = _resolve_db_path().expanduser()
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 BACKUP_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-def _load_desks_backup():
+
+# ---------------------------------------------------
+# CONNECTION HANDLING
+# ---------------------------------------------------
+def get_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+# ---------------------------------------------------
+# BACKUP HANDLING
+# ---------------------------------------------------
+def _load_desks_backup() -> list[dict]:
     if not BACKUP_PATH.exists():
         return []
 
@@ -56,7 +74,8 @@ def _load_desks_backup():
     except json.JSONDecodeError:
         return []
 
-def write_desks_backup():
+
+def write_desks_backup() -> None:
     conn = get_conn()
     desks = conn.execute(
         """
@@ -69,12 +88,12 @@ def write_desks_backup():
 
     backup_data = [
         {
-            "name": name,
-            "location": location,
-            "is_active": is_active,
-            "admin_only": admin_only,
+            "name": row["name"],
+            "location": row["location"],
+            "is_active": row["is_active"],
+            "admin_only": row["admin_only"],
         }
-        for name, location, is_active, admin_only in desks
+        for row in desks
     ]
 
     BACKUP_PATH.write_text(
@@ -82,17 +101,17 @@ def write_desks_backup():
         encoding="utf-8",
     )
 
-def get_conn():
-    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
-def init_db():
+# ---------------------------------------------------
+# DATABASE INITIALISATION
+# ---------------------------------------------------
+def init_db() -> None:
     conn = get_conn()
     c = conn.cursor()
 
-    # ---------------------------------------------------
-    # USERS TABLE
-    # ---------------------------------------------------
-    c.execute("""
+    # USERS
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -101,12 +120,12 @@ def init_db():
             can_book INTEGER,
             is_active INTEGER DEFAULT 1
         )
-    """)
+        """
+    )
 
-    # ---------------------------------------------------
-    # DESKS TABLE
-    # ---------------------------------------------------
-    c.execute("""
+    # DESKS
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS desks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -114,12 +133,12 @@ def init_db():
             is_active INTEGER DEFAULT 1,
             admin_only INTEGER DEFAULT 0
         )
-    """)
+        """
+    )
 
-    # ---------------------------------------------------
-    # AUDIT LOG TABLE
-    # ---------------------------------------------------
-    c.execute("""
+    # AUDIT LOG
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT,
@@ -127,7 +146,59 @@ def init_db():
             details TEXT,
             timestamp TEXT
         )
-    """)
+        """
+    )
 
     conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------
+# SEED DEFAULT DESKS
+# ---------------------------------------------------
+def seed_desks() -> None:
+    """
+    Insert default desks if none exist.
+    Safe to run multiple times.
+    """
+    conn = get_conn()
+    c = conn.cursor()
+
+    count = c.execute("SELECT COUNT(*) FROM desks").fetchone()[0]
+
+    if count == 0:
+        backup_desks = _load_desks_backup()
+
+        if backup_desks:
+            c.executemany(
+                """
+                INSERT INTO desks (name, location, is_active, admin_only)
+                VALUES (?, ?, ?, ?)
+                """,
+                [
+                    (
+                        d.get("name"),
+                        d.get("location"),
+                        d.get("is_active", 1),
+                        d.get("admin_only", 0),
+                    )
+                    for d in backup_desks
+                    if d.get("name")
+                ],
+            )
+        else:
+            c.executemany(
+                """
+                INSERT INTO desks (name, location)
+                VALUES (?, ?)
+                """,
+                [
+                    ("Desk 1", "Office"),
+                    ("Desk 2", "Office"),
+                    ("Desk 3", "Office"),
+                ],
+            )
+
+        conn.commit()
+
     conn.close()
