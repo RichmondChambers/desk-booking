@@ -10,10 +10,7 @@ def render_booking_grid(desk_ids, desk_names, times, booked, past):
     header_cols = st.columns([1] + [1 for _ in desk_ids])
     header_cols[0].markdown("**Time**")
     for col, desk_id in zip(header_cols[1:], desk_ids):
-        col.markdown(
-            f"<div class='desk-header'><strong>{desk_names[desk_id]}</strong></div>",
-            unsafe_allow_html=True,
-        )
+        col.markdown(f"**{desk_names[desk_id]}**")
 
     for slot in times:
         time_label = slot.strftime("%H:%M")
@@ -43,16 +40,7 @@ def render_booking_grid(desk_ids, desk_names, times, booked, past):
 st.set_page_config(page_title="Book a Desk", layout="wide")
 apply_lato_font()
 st.title("Book a Desk")
-st.markdown(
-    """
-    <style>
-    .desk-header {
-        white-space: nowrap;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown(HEADER_STYLE, unsafe_allow_html=True)
 
 # --------------------------------------------------
 # AUTH & PERMISSION CHECK
@@ -235,6 +223,10 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
 
     conn.commit()
     conn.close()
+
+    for key in list(st.session_state.keys()):
+        if key.startswith("desk_"):
+            st.session_state[key] = False
 
     st.success("Booking confirmed.")
     st.rerun()
