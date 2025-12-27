@@ -135,7 +135,6 @@ payload = {
 # --------------------------------------------------
 html = """
 <style>
-html, body { margin:0; padding:0; }
 * { box-sizing:border-box; }
 
 .grid {
@@ -187,10 +186,13 @@ function status(key) {
 }
 
 function pushSelection() {
-  const doc = window.parent.document;
   const input =
-    doc.querySelector('input[aria-label="selected_cells_hidden"]') ||
-    doc.querySelector('textarea[aria-label="selected_cells_hidden"]');
+    document.querySelector('input[aria-label="selected_cells_hidden"]') ||
+    document.querySelector('textarea[aria-label="selected_cells_hidden"]') ||
+    document.querySelector('input[id*="selected_cells_hidden"]') ||
+    document.querySelector('textarea[id*="selected_cells_hidden"]') ||
+    document.querySelector('input[name*="selected_cells_hidden"]') ||
+    document.querySelector('textarea[name*="selected_cells_hidden"]');
 
   if (!input) return;
 
@@ -256,7 +258,7 @@ document.onmouseup = () => dragging = false;
 </script>
 """ % (len(DESK_IDS), json.dumps(payload))
 
-st.components.v1.html(html, height=1200)
+st.html(html, unsafe_allow_javascript=True)
 
 # --------------------------------------------------
 # CONFIRM BOOKING
