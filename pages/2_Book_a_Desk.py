@@ -1,11 +1,12 @@
 import streamlit as st
 from datetime import datetime, date, time, timedelta
-from utils.db import ensure_db, get_conn
-from utils.auth import require_login
-from utils.desk_component import desk_booking_component
-from utils.styles import apply_lato_font
+from pathlib import Path
 
 import streamlit.components.v1 as components
+
+from utils.db import ensure_db, get_conn
+from utils.auth import require_login
+from utils.styles import apply_lato_font
 
 # --------------------------------------------------
 # STREAMLIT COMPONENT DECLARATION
@@ -16,7 +17,7 @@ if not component_root.exists():
 
 desk_booking_component = components.declare_component(
     "desk_booking_component",
-    path=str(Path(__file__).resolve().parent.parent / "desk_booking_component"),
+    path=str(component_root),
 )
 
 def desk_booking_grid(payload, height=520):
@@ -86,7 +87,7 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur <= end_dt:
+while cur < end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -103,12 +104,14 @@ rows = conn.execute(
     """
     SELECT desk_id, start_time, end_time
     FROM bookings
-    WHERE date = ? AND status = 'booked'
+    WHERE date = ?
+      AND status = 'booked'
     """,
     (date_iso,),
 ).fetchall()
 
 booked = set()
+
 for row in rows:
     s = time.fromisoformat(row["start_time"])
     e = time.fromisoformat(row["end_time"])
@@ -136,7 +139,7 @@ payload = {
 }
 
 # --------------------------------------------------
-# RENDER GRID (REAL COMPONENT)
+# RENDER GRID
 # --------------------------------------------------
 selected_cells = desk_booking_grid(payload) or []
 
@@ -162,6 +165,7 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
     for desk_id, times in by_desk.items():
         times.sort()
 
+        # Ensure contiguous time slots
         for a, b in zip(times, times[1:]):
             if (
                 datetime.combine(selected_date, b)
