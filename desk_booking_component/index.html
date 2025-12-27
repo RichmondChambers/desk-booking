@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+.grid {
+  display:grid;
+  grid-template-columns:90px repeat(var(--cols),1fr);
+  gap:12px;
+  font-family:sans-serif;
+}
+.time,.header { text-align:center; font-size:14px; }
+.header { font-weight:600; }
+.cell {
+  height:42px;
+  border-radius:10px;
+  border:1px solid #ccc;
+}
+.available { background:#fff; cursor:pointer; }
+.available:hover { outline:2px solid #009fdf; }
+.selected { background:#009fdf !important; }
+.booked { background:#c0392b; cursor:not-allowed; }
+.past { background:#2c2c2c; cursor:not-allowed; }
+</style>
+</head>
+
+<body>
+<div class="grid" id="grid"></div>
+
+<script>
+const grid = document.getElementById("grid");
+let selected = new Set();
+let dragging = false;
+
+function render(data) {
+  grid.style.setProperty("--cols", data.desks.length);
+  grid.innerHTML = "";
+
+  grid.appendChild(document.createElement("div"));
+  data.desks.forEach(d => {
+    const h = document.createElement("div");
+    h.className = "header";
+    h.innerText = data.deskNames[d];
+    grid.appendChild(h);
+  });
+
+  data.times.forEach(t => {
+    const tl = document.createElement("div");
+    tl.className = "time";
+    tl.innerText = t;
+    grid.appendChild(tl);
+
+    data.desks.forEach(d => {
+      const key = d + "_" + t;
+      const c = document.createElement("div");
+
+      if (data.booked.includes(key)) c.className = "cell booked";
+      else if (data.past.includes(key)) c.className = "cell past";
+      else c.className = "cell available";
+
+      c.onmousedown = () => {
+        if (!c.classList.contains("available")) return;
+        dragging = true;
+        toggle(c, key);
+      };
+
+      c.onmouseover = () => dragging && toggle(c, key);
+      c.onmouseup = () => dragging = false;
+
+      grid.appendChild(c);
+    });
+  });
+}
+
+function toggle(cell, key) {
+  if (cell.classList.contains("selected")) {
+    cell.classList.remove("selected");
+    selected.delete(key);
+  } else {
+    cell.classList.add("selected");
+    selected.add(key);
+  }
+  Streamlit.setComponentValue(Array.from(selected));
+}
+
+document.addEventListener("mouseup", () => dragging = false);
+
+Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, e => {
+  render(e.detail.args.data);
+  Streamlit.setFrameHeight();
+});
+</script>
+</body>
+</html>
