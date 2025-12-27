@@ -3,7 +3,7 @@ import requests
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
-from utils.db import init_db, seed_desks, get_conn
+from utils.db import init_db, get_conn
 
 # ---------------------------------------------------
 # STREAMLIT CONFIG
@@ -18,10 +18,9 @@ BOOTSTRAP_ADMINS = {
 }
 
 # ---------------------------------------------------
-# INITIALISE DATABASE + SEED DATA
+# INITIALISE DATABASE
 # ---------------------------------------------------
 init_db()
-seed_desks()
 
 # ---------------------------------------------------
 # LOGOUT FUNCTION
@@ -159,7 +158,6 @@ if st.session_state.user_id is None:
     if email in BOOTSTRAP_ADMINS:
         final_role = "admin"
 
-        # Optional: keep DB in sync
         if db_role != "admin":
             c.execute(
                 "UPDATE users SET role='admin' WHERE email=?",
