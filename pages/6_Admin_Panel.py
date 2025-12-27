@@ -15,13 +15,24 @@ require_admin()
 st.title("Admin Panel")
 
 # ---------------------------------------------------
-# DB HELPER
+# DB HELPERS
 # ---------------------------------------------------
-def run_db(query, params=()):
+def run_db(query: str, params=()):
     conn = get_conn()
     conn.execute(query, params)
     conn.commit()
     conn.close()
+
+
+def table_exists(table_name: str) -> bool:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone()
+    conn.close()
+    return row is not None
+
 
 # ---------------------------------------------------
 # LOAD USERS
@@ -41,9 +52,10 @@ conn.close()
 # ---------------------------------------------------
 st.subheader("User Management")
 
-for user_id, name, email, role, can_book, is_active in users:
+current_user_email = st.session_state.user_email
 
-    is_self = email == st.session_state.user_email
+for user_id, name, email, role, can_book, is_active in users:
+    is_self = email == current_user_email
 
     with st.container(border=True):
         col1, col2, col3, col4, col5, col6 = st.columns([3, 4, 2, 2, 2, 3])
@@ -57,47 +69,66 @@ for user_id, name, email, role, can_book, is_active in users:
         with col6:
             # ROLE TOGGLE
             if role == "admin":
-                if st.button("Remove admin", key=f"remove_admin_{user_id}", disabled=is_self):
-                    log_action("REMOVE_ADMIN", f"Removed admin role from {email}")
-                    run_db("UPDATE users SET role='user' WHERE id=?", (user_id,))
-                    st.rerun()
+                if st.button(
+                    "Remove admin",
+                    key=f"remove_admin_{user_id}",
+                    disabled=is_self,
+                ):
+                    if not is_self:
+                        log_action("REMOVE_ADMIN", f"Removed admin role from {email}")
+                        run_db("UPDATE users SET role='user' WHERE id=?", (user_id,))
+                        st.rerun()
             else:
-                if st.button("Make admin", key=f"make_admin_{user_id}", disabled=is_self):
+                if st.button(
+                    "Make admin",
+                    key=f"make_admin_{user_id}",
+                    disabled=is_self,
+                ):
                     log_action("PROMOTE_TO_ADMIN", f"Promoted {email} to admin")
                     run_db("UPDATE users SET role='admin' WHERE id=?", (user_id,))
                     st.rerun()
 
             # BOOKING PERMISSION
             toggle_label = "Disable booking" if can_book else "Enable booking"
-            if st.button(toggle_label, key=f"toggle_booking_{user_id}", disabled=is_self or not is_active):
-                log_action(
-                    "TOGGLE_CAN_BOOK",
-                    f"{'Disabled' if can_book else 'Enabled'} booking for {email}",
-                )
-                run_db(
-                    "UPDATE users SET can_book=? WHERE id=?",
-                    (0 if can_book else 1, user_id),
-                )
-                st.rerun()
+            if st.button(
+                toggle_label,
+                key=f"toggle_booking_{user_id}",
+                disabled=is_self or not is_active,
+            ):
+                if not is_self:
+                    log_action(
+                        "TOGGLE_CAN_BOOK",
+                        f"{'Disabled' if can_book else 'Enabled'} booking for {email}",
+                    )
+                    run_db(
+                        "UPDATE users SET can_book=? WHERE id=?",
+                        (0 if can_book else 1, user_id),
+                    )
+                    st.rerun()
 
             # ACTIVE STATUS
             status_label = "Deactivate user" if is_active else "Activate user"
-            if st.button(status_label, key=f"toggle_active_{user_id}", disabled=is_self):
-                log_action(
-                    "TOGGLE_ACTIVE",
-                    f"{'Deactivated' if is_active else 'Activated'} user {email}",
-                )
-                if is_active:
-                    run_db(
-                        "UPDATE users SET is_active=0, can_book=0 WHERE id=?",
-                        (user_id,),
+            if st.button(
+                status_label,
+                key=f"toggle_active_{user_id}",
+                disabled=is_self,
+            ):
+                if not is_self:
+                    log_action(
+                        "TOGGLE_ACTIVE",
+                        f"{'Deactivated' if is_active else 'Activated'} user {email}",
                     )
-                else:
-                    run_db(
-                        "UPDATE users SET is_active=1 WHERE id=?",
-                        (user_id,),
-                    )
-                st.rerun()
+                    if is_active:
+                        run_db(
+                            "UPDATE users SET is_active=0, can_book=0 WHERE id=?",
+                            (user_id,),
+                        )
+                    else:
+                        run_db(
+                            "UPDATE users SET is_active=1 WHERE id=?",
+                            (user_id,),
+                        )
+                    st.rerun()
 
 # ===================================================
 # DESK MANAGEMENT
@@ -192,14 +223,19 @@ for desk_id, name, location, is_active, admin_only in desks:
             ):
                 log_action(
                     "DELETE_DESK",
-                    f"Deleted desk '{name}' and all associated bookings",
+                    f"Deleted desk '{name}' and associated bookings",
                 )
 
-                run_db("DELETE FROM bookings WHERE desk_id = ?", (desk_id,))
+                if table_exists("bookings"):
+                    run_db(
+                        "DELETE FROM bookings WHERE desk_id = ?",
+                        (desk_id,),
+                    )
+
                 run_db("DELETE FROM desks WHERE id = ?", (desk_id,))
                 write_desks_backup()
 
-                st.success(f"Desk '{name}' deleted (including bookings).")
+                st.success(f"Desk '{name}' deleted.")
                 st.rerun()
 
 # ---------------------------------------------------
@@ -208,31 +244,43 @@ for desk_id, name, location, is_active, admin_only in desks:
 st.divider()
 st.subheader("All Bookings")
 
-conn = get_conn()
-bookings = conn.execute(
-    """
-    SELECT
-        b.id,
-        u.email,
-        d.name AS desk,
-        b.date,
-        b.start_time,
-        b.end_time,
-        b.status,
-        b.checked_in
-    FROM bookings b
-    JOIN users u ON b.user_id = u.id
-    JOIN desks d ON b.desk_id = d.id
-    ORDER BY b.date DESC
-    """
-).fetchall()
-conn.close()
+if table_exists("bookings"):
+    conn = get_conn()
+    bookings = conn.execute(
+        """
+        SELECT
+            b.id,
+            u.email,
+            d.name AS desk,
+            b.date,
+            b.start_time,
+            b.end_time,
+            b.status,
+            b.checked_in
+        FROM bookings b
+        JOIN users u ON b.user_id = u.id
+        JOIN desks d ON b.desk_id = d.id
+        ORDER BY b.date DESC
+        """
+    ).fetchall()
+    conn.close()
 
-df_bookings = pd.DataFrame(
-    bookings,
-    columns=["ID", "User", "Desk", "Date", "Start", "End", "Status", "Checked In"],
-)
-st.dataframe(df_bookings, use_container_width=True)
+    df_bookings = pd.DataFrame(
+        bookings,
+        columns=[
+            "ID",
+            "User",
+            "Desk",
+            "Date",
+            "Start",
+            "End",
+            "Status",
+            "Checked In",
+        ],
+    )
+    st.dataframe(df_bookings, use_container_width=True)
+else:
+    st.info("No bookings table present.")
 
 # ---------------------------------------------------
 # AUDIT LOG
