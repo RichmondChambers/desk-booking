@@ -136,6 +136,24 @@ def init_db() -> None:
         """
     )
 
+    # BOOKINGS (CRITICAL)
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            desk_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            status TEXT NOT NULL,
+            checked_in INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (desk_id) REFERENCES desks(id)
+        )
+        """
+    )
+
     # AUDIT LOG
     c.execute(
         """
