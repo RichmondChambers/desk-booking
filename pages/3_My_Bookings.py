@@ -3,10 +3,12 @@ from datetime import date
 from utils.db import ensure_db, get_conn
 from utils.audit import log_action
 from utils.dates import uk_date
+from utils.styles import apply_lato_font
 
 # ---------------------------------------------------
 # PAGE SETUP
 # ---------------------------------------------------
+apply_lato_font()
 st.title("My Bookings")
 ensure_db()
 

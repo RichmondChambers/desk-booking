@@ -1,5 +1,8 @@
 import streamlit as st
 
+from utils.styles import apply_lato_font
+
+apply_lato_font()
 st.title("Office Map")
 
 st.write("Visual representation of the 15-desk layout.")

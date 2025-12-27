@@ -1,9 +1,12 @@
 import streamlit as st
 
+from utils.styles import apply_lato_font
+
 
 # ---------------------------------------------------
 # PAGE SETUP
 # ---------------------------------------------------
+apply_lato_font()
 st.title("Dashboard")
 st.subheader("Your Profile")
 
