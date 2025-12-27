@@ -12,6 +12,45 @@ DB_PATH = Path(
 
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+
+
+
+
++26
+-2
+
+import os
+import sqlite3
+from pathlib import Path
+
+import streamlit as st
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
+
+def _secret_db_path() -> str | None:
+    if not hasattr(st, "secrets"):
+        return None
+
+    db_path = st.secrets.get("db_path")
+    if db_path:
+        return db_path
+
+    db_config = st.secrets.get("database")
+    if isinstance(db_config, dict):
+        return db_config.get("path")
+
+    return None
+
+DB_PATH = Path(
+    os.getenv(
+        "DESK_BOOKING_DB_PATH",
+        _secret_db_path() or DEFAULT_DB_PATH,
+    )
+).expanduser()
+
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 def get_conn():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
