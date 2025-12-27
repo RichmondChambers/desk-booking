@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from datetime import datetime, date, time, timedelta
 import json
 
@@ -22,20 +23,6 @@ can_book = st.session_state.get("can_book", 0)
 if not user_id or not can_book:
     st.error("You do not have permission to book desks.")
     st.stop()
-
-# --------------------------------------------------
-# HIDDEN INPUT BRIDGE (FOR GRID SELECTION)
-# --------------------------------------------------
-selected_cells_str = st.text_input(
-    "selected_cells_hidden",
-    value="",
-    key="selected_cells_hidden",
-    label_visibility="collapsed",
-)
-
-selected_cells = (
-    selected_cells_str.split(",") if selected_cells_str else []
-)
 
 # --------------------------------------------------
 # DATE PICKER
@@ -135,7 +122,6 @@ payload = {
 # --------------------------------------------------
 html = """
 <style>
-html, body { margin:0; padding:0; }
 * { box-sizing:border-box; }
 
 .grid {
@@ -186,17 +172,40 @@ function status(key) {
   return "Available";
 }
 
+function sendToStreamlit(value) {
+  window.parent.postMessage(
+    {
+      isStreamlitMessage: true,
+      type: "streamlit:setComponentValue",
+      value: value,
+    },
+    "*"
+  );
+}
+
+function setFrameHeight() {
+  window.parent.postMessage(
+    {
+      isStreamlitMessage: true,
+      type: "streamlit:setFrameHeight",
+      height: document.documentElement.scrollHeight,
+    },
+    "*"
+  );
+}
+
+window.parent.postMessage(
+  { isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 },
+  "*"
+);
+
+window.addEventListener("load", () => {
+  sendToStreamlit(Array.from(selected));
+  setFrameHeight();
+});
+
 function pushSelection() {
-  const doc = window.parent.document;
-  const input =
-    doc.querySelector('input[aria-label="selected_cells_hidden"]') ||
-    doc.querySelector('textarea[aria-label="selected_cells_hidden"]');
-
-  if (!input) return;
-
-  input.value = Array.from(selected).join(",");
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
+  sendToStreamlit(Array.from(selected));
 }
 
 // Header row
@@ -256,7 +265,17 @@ document.onmouseup = () => dragging = false;
 </script>
 """ % (len(DESK_IDS), json.dumps(payload))
 
-st.components.v1.html(html, height=1200)
+selected_cells = components.html(
+    html,
+    height=1200,
+    key=f"booking_grid_{date_iso}",
+)
+if not selected_cells:
+    selected_cells = []
+elif isinstance(selected_cells, str):
+    selected_cells = [
+        cell for cell in selected_cells.split(",") if cell
+    ]
 
 # --------------------------------------------------
 # CONFIRM BOOKING
