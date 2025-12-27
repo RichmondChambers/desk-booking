@@ -2,7 +2,7 @@ import streamlit as st
 from datetime import datetime, date, time, timedelta
 import json
 
-from utils.db import get_conn
+from utils.db import ensure_db, get_conn
 from utils.auth import require_login
 
 st.set_page_config(page_title="Book a Desk", layout="wide")
@@ -12,6 +12,7 @@ st.title("Book a Desk")
 # AUTH & PERMISSION CHECK
 # --------------------------------------------------
 require_login()
+ensure_db()
 
 user_id = st.session_state.get("user_id")
 can_book = st.session_state.get("can_book", 0)

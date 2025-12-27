@@ -1,6 +1,6 @@
 import streamlit as st
 from datetime import date
-from utils.db import get_conn
+from utils.db import ensure_db, get_conn
 from utils.audit import log_action
 from utils.dates import uk_date
 
@@ -8,6 +8,7 @@ from utils.dates import uk_date
 # PAGE SETUP
 # ---------------------------------------------------
 st.title("My Bookings")
+ensure_db()
 
 # ---------------------------------------------------
 # SESSION STATE SAFETY
