@@ -133,10 +133,19 @@ payload = {
 # --------------------------------------------------
 html = """
 <style>
-html, body { margin:0; padding:0; font-family:inherit; }
-* { box-sizing:border-box; font-family:inherit; }
+html, body {
+  margin:0;
+  padding:0;
+  font-family: "Source Sans Pro", sans-serif;
+}
+* { box-sizing:border-box; }
 
-.grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
+.grid {
+  display:grid;
+  grid-template-columns:90px repeat(%d,1fr);
+  gap:12px;
+  font-family: "Source Sans Pro", sans-serif;
+}
 .time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
 .header { font-weight:600; }
 
@@ -158,6 +167,7 @@ html, body { margin:0; padding:0; font-family:inherit; }
   border-radius:10px;
   background:rgba(255,255,255,0.08);
   color:#e5e7eb;
+  font-family: "Source Sans Pro", sans-serif;
 }
 </style>
 
