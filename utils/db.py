@@ -6,6 +6,7 @@ import streamlit as st
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
+PERSISTENT_DATA_DIR = Path("/data")
 
 def _secret_db_path() -> str | None:
     if not hasattr(st, "secrets"):
@@ -24,7 +25,12 @@ def _secret_db_path() -> str | None:
 DB_PATH = Path(
     os.getenv(
         "DESK_BOOKING_DB_PATH",
-        _secret_db_path() or DEFAULT_DB_PATH,
+        _secret_db_path()
+        or (
+            PERSISTENT_DATA_DIR / "desk-booking.db"
+            if PERSISTENT_DATA_DIR.is_dir()
+            else Path.home() / ".desk-booking" / "data.db"
+        ),
     )
 ).expanduser()
 
