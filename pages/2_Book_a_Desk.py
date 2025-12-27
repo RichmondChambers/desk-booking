@@ -162,7 +162,6 @@ payload = {
 # --------------------------------------------------
 html = """
 <style>
-html, body { margin:0; padding:0; }
 * { box-sizing:border-box; }
 
 .grid {
@@ -278,7 +277,7 @@ document.onmouseup = () => dragging = false;
 </script>
 """ % (len(DESK_IDS), json.dumps(payload))
 
-st.components.v1.html(html, height=1200)
+st.html(html, unsafe_allow_javascript=True)
 
 # --------------------------------------------------
 # CONFIRM BOOKING
