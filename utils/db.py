@@ -8,7 +8,6 @@ import streamlit as st
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
 PERSISTENT_DATA_DIR = Path("/data")
-BACKUP_PATH = Path.home() / ".desk-booking" / "desks.json"
 
 
 # ---------------------------------------------------
@@ -38,18 +37,24 @@ def _resolve_db_path() -> Path:
     if secret_path:
         return Path(secret_path)
 
-    if DEFAULT_DB_PATH.exists():
-        return DEFAULT_DB_PATH
-
     if PERSISTENT_DATA_DIR.is_dir():
         return PERSISTENT_DATA_DIR / "desk-booking.db"
+
+    if DEFAULT_DB_PATH.exists():
+        return DEFAULT_DB_PATH
 
     return Path.home() / ".desk-booking" / "data.db"
 
 
 DB_PATH = _resolve_db_path().expanduser()
+DESK_BACKUP_PATH = Path(
+    os.getenv(
+        "DESK_BOOKING_DESK_BACKUP_PATH",
+        DB_PATH.parent / "desks.json",
+    )
+).expanduser()
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-BACKUP_PATH.parent.mkdir(parents=True, exist_ok=True)
+DESK_BACKUP_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------
@@ -66,11 +71,11 @@ def get_conn() -> sqlite3.Connection:
 # BACKUP HANDLING
 # ---------------------------------------------------
 def _load_desks_backup() -> list[dict]:
-    if not BACKUP_PATH.exists():
+    if not DESK_BACKUP_PATH.exists():
         return []
 
     try:
-        return json.loads(BACKUP_PATH.read_text(encoding="utf-8"))
+        return json.loads(DESK_BACKUP_PATH.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return []
 
@@ -96,7 +101,7 @@ def write_desks_backup() -> None:
         for row in desks
     ]
 
-    BACKUP_PATH.write_text(
+    DESK_BACKUP_PATH.write_text(
         json.dumps(backup_data, indent=2),
         encoding="utf-8",
     )
@@ -182,40 +187,57 @@ def seed_desks() -> None:
     conn = get_conn()
     c = conn.cursor()
 
-    count = c.execute("SELECT COUNT(*) FROM desks").fetchone()[0]
+    existing_desks = c.execute(
+        """
+        SELECT id, name
+        FROM desks
+        """
+    ).fetchall()
+    existing_by_name = {row["name"]: row["id"] for row in existing_desks}
+    backup_desks = _load_desks_backup()
 
-    if count == 0:
-        backup_desks = _load_desks_backup()
+    if backup_desks:
+        for desk in backup_desks:
+            name = desk.get("name")
+            if not name:
+                continue
 
-        if backup_desks:
-            c.executemany(
-                """
-                INSERT INTO desks (name, location, is_active, admin_only)
-                VALUES (?, ?, ?, ?)
-                """,
-                [
-                    (
-                        d.get("name"),
-                        d.get("location"),
-                        d.get("is_active", 1),
-                        d.get("admin_only", 0),
-                    )
-                    for d in backup_desks
-                    if d.get("name")
-                ],
-            )
-        else:
-            c.executemany(
-                """
-                INSERT INTO desks (name, location)
-                VALUES (?, ?)
-                """,
-                [
-                    ("Desk 1", "Office"),
-                    ("Desk 2", "Office"),
-                    ("Desk 3", "Office"),
-                ],
-            )
+            location = desk.get("location")
+            is_active = desk.get("is_active", 1)
+            admin_only = desk.get("admin_only", 0)
+            existing_id = existing_by_name.get(name)
+
+            if existing_id is None:
+                c.execute(
+                    """
+                    INSERT INTO desks (name, location, is_active, admin_only)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (name, location, is_active, admin_only),
+                )
+            else:
+                c.execute(
+                    """
+                    UPDATE desks
+                    SET location = ?, is_active = ?, admin_only = ?
+                    WHERE id = ?
+                    """,
+                    (location, is_active, admin_only, existing_id),
+                )
+
+        conn.commit()
+    elif not existing_desks:
+        c.executemany(
+            """
+            INSERT INTO desks (name, location)
+            VALUES (?, ?)
+            """,
+            [
+                ("Desk 1", "Office"),
+                ("Desk 2", "Office"),
+                ("Desk 3", "Office"),
+            ],
+        )
 
         conn.commit()
 
