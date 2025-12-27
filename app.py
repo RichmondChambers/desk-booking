@@ -4,11 +4,13 @@ from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
 from utils.db import ensure_db, get_conn
+from utils.styles import apply_lato_font
 
 # ---------------------------------------------------
 # STREAMLIT CONFIG
 # ---------------------------------------------------
 st.set_page_config(page_title="Desk Booking", layout="wide")
+apply_lato_font()
 
 # ---------------------------------------------------
 # BOOTSTRAP ADMINS (CANNOT BE LOST)

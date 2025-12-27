@@ -4,8 +4,10 @@ import pandas as pd
 from utils.db import ensure_db, get_conn, write_desks_backup
 from utils.auth import require_admin
 from utils.audit import log_action
+from utils.styles import apply_lato_font
 
 st.set_page_config(page_title="Admin Panel", layout="wide")
+apply_lato_font()
 
 # ---------------------------------------------------
 # PERMISSION CHECK
