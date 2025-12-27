@@ -1,9 +1,8 @@
 import streamlit as st
 from datetime import datetime, date, time, timedelta
-from pathlib import Path
-
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
+from utils.desk_component import desk_booking_component
 from utils.styles import apply_lato_font
 
 import streamlit.components.v1 as components
