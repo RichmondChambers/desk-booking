@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8" />
+<script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.js"></script>
 <style>
 .grid {
   display:grid;
@@ -89,6 +90,8 @@ Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, e => {
   render(e.detail.args.data);
   Streamlit.setFrameHeight();
 });
+
+Streamlit.setComponentReady();
 </script>
 </body>
 </html>
