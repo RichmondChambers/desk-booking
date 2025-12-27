@@ -1,18 +1,49 @@
 import streamlit as st
 from datetime import datetime, date, time, timedelta
-from utils.components import get_desk_booking_component
 
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
 from utils.styles import apply_lato_font
 
-# --------------------------------------------------
-# STREAMLIT COMPONENT DECLARATION
-# --------------------------------------------------
-desk_booking_component = get_desk_booking_component()
+HEADER_STYLE = """
+<style>
+.desk-header {
+    white-space: nowrap;
+}
+</style>
+"""
 
-def desk_booking_grid(payload, height=520):
-    return desk_booking_component(data=payload, height=height)
+def render_booking_grid(desk_ids, desk_names, times, booked, past):
+    selected = []
+    header_cols = st.columns([1] + [1 for _ in desk_ids])
+    header_cols[0].markdown("**Time**")
+    for col, desk_id in zip(header_cols[1:], desk_ids):
+        col.markdown(
+            f"<div class='desk-header'><strong>{desk_names[desk_id]}</strong></div>",
+            unsafe_allow_html=True,
+        )
+
+    for slot in times:
+        time_label = slot.strftime("%H:%M")
+        row_cols = st.columns([1] + [1 for _ in desk_ids])
+        row_cols[0].markdown(time_label)
+
+        for col, desk_id in zip(row_cols[1:], desk_ids):
+            cell_key = f"{desk_id}_{time_label}"
+            widget_key = f"desk_{cell_key}"
+
+            if cell_key in booked:
+                col.markdown("🔒")
+                continue
+
+            if cell_key in past:
+                col.markdown("⏱️")
+                continue
+
+            if col.checkbox("", key=widget_key):
+                selected.append(cell_key)
+
+    return selected
 
 # --------------------------------------------------
 # PAGE SETUP
@@ -20,6 +51,7 @@ def desk_booking_grid(payload, height=520):
 st.set_page_config(page_title="Book a Desk", layout="wide")
 apply_lato_font()
 st.title("Book a Desk")
+st.markdown(HEADER_STYLE, unsafe_allow_html=True)
 
 # --------------------------------------------------
 # AUTH & PERMISSION CHECK
@@ -78,7 +110,7 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur < end_dt:
+while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
@@ -112,27 +144,23 @@ for row in rows:
 
 conn.close()
 
-# --------------------------------------------------
-# GRID PAYLOAD
-# --------------------------------------------------
-payload = {
-    "desks": DESK_IDS,
-    "deskNames": DESK_NAMES,
-    "times": [t.strftime("%H:%M") for t in slots],
-    "booked": list(booked),
-    "past": [
-        f"{d}_{t.strftime('%H:%M')}"
-        for d in DESK_IDS
-        for t in slots
-        if is_past(t)
-    ],
-    "dateLabel": selected_date.strftime("%d/%m/%Y"),
+past = {
+    f"{d}_{t.strftime('%H:%M')}"
+    for d in DESK_IDS
+    for t in slots
+    if is_past(t)
 }
 
 # --------------------------------------------------
 # RENDER GRID
 # --------------------------------------------------
-selected_cells = desk_booking_grid(payload) or []
+selected_cells = render_booking_grid(
+    DESK_IDS,
+    DESK_NAMES,
+    slots,
+    booked,
+    past,
+)
 
 # --------------------------------------------------
 # CONFIRM BOOKING
