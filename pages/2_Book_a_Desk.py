@@ -1,8 +1,6 @@
 import streamlit as st
 from datetime import datetime, date, time, timedelta
-from pathlib import Path
-
-import streamlit.components.v1 as components
+from utils.components import get_desk_booking_component
 
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
@@ -11,14 +9,7 @@ from utils.styles import apply_lato_font
 # --------------------------------------------------
 # STREAMLIT COMPONENT DECLARATION
 # --------------------------------------------------
-component_root = Path(__file__).resolve().parent.parent / "desk_booking_component"
-if not component_root.exists():
-    component_root = Path(__file__).resolve().parent / "desk_booking_component"
-
-desk_booking_component = components.declare_component(
-    "desk_booking_component",
-    path=str(component_root),
-)
+desk_booking_component = get_desk_booking_component()
 
 def desk_booking_grid(payload, height=520):
     return desk_booking_component(data=payload, height=height)
