@@ -5,23 +5,12 @@ from utils.db import ensure_db, get_conn
 from utils.auth import require_login
 from utils.styles import apply_lato_font
 
-HEADER_STYLE = """
-<style>
-.desk-header {
-    white-space: nowrap;
-}
-</style>
-"""
-
 def render_booking_grid(desk_ids, desk_names, times, booked, past):
     selected = []
     header_cols = st.columns([1] + [1 for _ in desk_ids])
     header_cols[0].markdown("**Time**")
     for col, desk_id in zip(header_cols[1:], desk_ids):
-        col.markdown(
-            f"<div class='desk-header'><strong>{desk_names[desk_id]}</strong></div>",
-            unsafe_allow_html=True,
-        )
+        col.markdown(f"**{desk_names[desk_id]}**")
 
     for slot in times:
         time_label = slot.strftime("%H:%M")
@@ -234,6 +223,10 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
 
     conn.commit()
     conn.close()
+
+    for key in list(st.session_state.keys()):
+        if key.startswith("desk_"):
+            st.session_state[key] = False
 
     st.success("Booking confirmed.")
     st.rerun()
