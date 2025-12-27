@@ -187,40 +187,57 @@ def seed_desks() -> None:
     conn = get_conn()
     c = conn.cursor()
 
-    count = c.execute("SELECT COUNT(*) FROM desks").fetchone()[0]
+    existing_desks = c.execute(
+        """
+        SELECT id, name
+        FROM desks
+        """
+    ).fetchall()
+    existing_by_name = {row["name"]: row["id"] for row in existing_desks}
+    backup_desks = _load_desks_backup()
 
-    if count == 0:
-        backup_desks = _load_desks_backup()
+    if backup_desks:
+        for desk in backup_desks:
+            name = desk.get("name")
+            if not name:
+                continue
 
-        if backup_desks:
-            c.executemany(
-                """
-                INSERT INTO desks (name, location, is_active, admin_only)
-                VALUES (?, ?, ?, ?)
-                """,
-                [
-                    (
-                        d.get("name"),
-                        d.get("location"),
-                        d.get("is_active", 1),
-                        d.get("admin_only", 0),
-                    )
-                    for d in backup_desks
-                    if d.get("name")
-                ],
-            )
-        else:
-            c.executemany(
-                """
-                INSERT INTO desks (name, location)
-                VALUES (?, ?)
-                """,
-                [
-                    ("Desk 1", "Office"),
-                    ("Desk 2", "Office"),
-                    ("Desk 3", "Office"),
-                ],
-            )
+            location = desk.get("location")
+            is_active = desk.get("is_active", 1)
+            admin_only = desk.get("admin_only", 0)
+            existing_id = existing_by_name.get(name)
+
+            if existing_id is None:
+                c.execute(
+                    """
+                    INSERT INTO desks (name, location, is_active, admin_only)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (name, location, is_active, admin_only),
+                )
+            else:
+                c.execute(
+                    """
+                    UPDATE desks
+                    SET location = ?, is_active = ?, admin_only = ?
+                    WHERE id = ?
+                    """,
+                    (location, is_active, admin_only, existing_id),
+                )
+
+        conn.commit()
+    elif not existing_desks:
+        c.executemany(
+            """
+            INSERT INTO desks (name, location)
+            VALUES (?, ?)
+            """,
+            [
+                ("Desk 1", "Office"),
+                ("Desk 2", "Office"),
+                ("Desk 3", "Office"),
+            ],
+        )
 
         conn.commit()
 
