@@ -37,6 +37,33 @@ selected_cells = (
     selected_cells_str.split(",") if selected_cells_str else []
 )
 
+st.markdown(
+    """
+    <script>
+    if (!window.deskBookingSelectionListenerAdded) {
+      window.deskBookingSelectionListenerAdded = true;
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "desk-booking-selection") {
+          return;
+        }
+        const input =
+          document.querySelector('input[aria-label="selected_cells_hidden"]') ||
+          document.querySelector('textarea[aria-label="selected_cells_hidden"]');
+        if (!input) return;
+        const value = Array.isArray(event.data.value)
+          ? event.data.value.join(",")
+          : "";
+        if (input.value === value) return;
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    </script>
+    """,
+    unsafe_allow_html=True,
+)
+
 # --------------------------------------------------
 # DATE PICKER
 # --------------------------------------------------
@@ -187,16 +214,11 @@ function status(key) {
 }
 
 function pushSelection() {
-  const doc = window.parent.document;
-  const input =
-    doc.querySelector('input[aria-label="selected_cells_hidden"]') ||
-    doc.querySelector('textarea[aria-label="selected_cells_hidden"]');
-
-  if (!input) return;
-
-  input.value = Array.from(selected).join(",");
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-  input.dispatchEvent(new Event("change", { bubbles: true }));
+  const value = Array.from(selected);
+  window.parent.postMessage(
+    { type: "desk-booking-selection", value },
+    "*"
+  );
 }
 
 // Header row
