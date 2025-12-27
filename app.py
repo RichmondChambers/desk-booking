@@ -3,7 +3,7 @@ import requests
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
-from utils.db import init_db, seed_desks, get_conn
+from utils.db import ensure_db, get_conn
 
 # ---------------------------------------------------
 # STREAMLIT CONFIG
@@ -20,8 +20,7 @@ BOOTSTRAP_ADMINS = {
 # ---------------------------------------------------
 # INITIALISE DATABASE
 # ---------------------------------------------------
-init_db()
-seed_desks()
+ensure_db()
 
 # ---------------------------------------------------
 # LOGOUT FUNCTION

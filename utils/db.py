@@ -274,3 +274,8 @@ def seed_desks() -> None:
         return
 
     conn.close()
+
+
+def ensure_db() -> None:
+    init_db()
+    seed_desks()

@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from utils.db import get_conn, write_desks_backup
+from utils.db import ensure_db, get_conn, write_desks_backup
 from utils.auth import require_admin
 from utils.audit import log_action
 
@@ -11,6 +11,7 @@ st.set_page_config(page_title="Admin Panel", layout="wide")
 # PERMISSION CHECK
 # ---------------------------------------------------
 require_admin()
+ensure_db()
 
 st.title("Admin Panel")
 

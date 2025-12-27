@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
-from utils.db import get_conn
+from utils.db import ensure_db, get_conn
 
 if st.session_state.role != "admin":
     st.error("HR access only.")
     st.stop()
 
 st.title("HR Compliance Reporting")
+ensure_db()
 
 conn = get_conn()
 c = conn.cursor()
