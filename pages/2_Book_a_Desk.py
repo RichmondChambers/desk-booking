@@ -138,7 +138,12 @@ html = """
 html, body { margin:0; padding:0; }
 * { box-sizing:border-box; }
 
-.grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
+.grid {
+  display:grid;
+  grid-template-columns:90px repeat(%d,1fr);
+  gap:12px;
+  font-family: "Source Sans Pro", sans-serif;
+}
 .time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
 .header { font-weight:600; }
 
@@ -160,6 +165,7 @@ html, body { margin:0; padding:0; }
   border-radius:10px;
   background:rgba(255,255,255,0.08);
   color:#e5e7eb;
+  font-family: "Source Sans Pro", sans-serif;
 }
 </style>
 
