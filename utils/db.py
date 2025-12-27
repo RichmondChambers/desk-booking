@@ -106,7 +106,18 @@ def init_db():
     # ---------------------------------------------------
     # DESKS TABLE
     # ---------------------------------------------------
-@@ -61,49 +136,68 @@ def init_db():
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS desks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            location TEXT,
+            is_active INTEGER DEFAULT 1,
+            admin_only INTEGER DEFAULT 0
+        )
+    """)
+
+    # ---------------------------------------------------
+    # AUDIT LOG TABLE
     # ---------------------------------------------------
     c.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -118,60 +129,5 @@ def init_db():
         )
     """)
 
-    conn.commit()
-    conn.close()
-
-def seed_desks():
-    """
-    Insert default desks if none exist.
-    Safe to run multiple times.
-    """
-    conn = get_conn()
-    c = conn.cursor()
-
-    count = c.execute("SELECT COUNT(*) FROM desks").fetchone()[0]
-
-    if count == 0:
-        backup_desks = _load_desks_backup()
-        if backup_desks:
-            c.executemany(
-                """
-                INSERT INTO desks (name, location, is_active, admin_only)
-                VALUES (?, ?, ?, ?)
-                """,
-                [
-                    (
-                        desk.get("name"),
-                        desk.get("location"),
-                        desk.get("is_active", 1),
-                        desk.get("admin_only", 0),
-                    )
-                    for desk in backup_desks
-                    if desk.get("name")
-                ],
-            )
-        else:
-            c.executemany(
-                "INSERT INTO desks (name, location) VALUES (?, ?)",
-                [
-                    ("Desk 1", "Office"),
-                    ("Desk 2", "Office"),
-                    ("Desk 3", "Office"),
-                ]
-            )
-        conn.commit()
-
-    conn.close()
-
-def make_admin(email: str):
-    """
-    Promote a user to admin and ensure they can book.
-    """
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute(
-        "UPDATE users SET role = 'admin', can_book = 1 WHERE email = ?",
-        (email,),
-    )
     conn.commit()
     conn.close()
