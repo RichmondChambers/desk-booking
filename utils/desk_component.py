@@ -9,15 +9,7 @@ def _resolve_component_root() -> Path:
     if root_component.exists():
         return root_component
 
-    pages_component = (
-        Path(__file__).resolve().parent.parent / "pages" / "desk_booking_component"
-    )
-    if pages_component.exists():
-        return pages_component
-
-    raise FileNotFoundError(
-        "desk_booking_component directory not found in repo root or pages/"
-    )
+    return Path(__file__).resolve().parent.parent / "pages" / "desk_booking_component"
 
 
 _DESK_COMPONENT_ROOT = _resolve_component_root()
