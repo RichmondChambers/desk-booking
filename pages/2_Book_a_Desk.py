@@ -40,6 +40,7 @@ def render_booking_grid(desk_ids, desk_names, times, booked, past):
 st.set_page_config(page_title="Book a Desk", layout="wide")
 apply_lato_font()
 st.title("Book a Desk")
+st.markdown(HEADER_STYLE, unsafe_allow_html=True)
 
 # --------------------------------------------------
 # AUTH & PERMISSION CHECK
@@ -98,7 +99,7 @@ slots = []
 cur = datetime.combine(selected_date, START)
 end_dt = datetime.combine(selected_date, END)
 
-while cur < end_dt:
+while cur <= end_dt:
     slots.append(cur.time())
     cur += timedelta(minutes=STEP)
 
