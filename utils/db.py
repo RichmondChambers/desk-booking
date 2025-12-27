@@ -2,27 +2,6 @@ import os
 import sqlite3
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = Path(
-    os.getenv(
-        "DESK_BOOKING_DB_PATH",
-        BASE_DIR / "data" / "data.db",
-    )
-).expanduser()
-
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-
-
-
-
-+26
--2
-
-import os
-import sqlite3
-from pathlib import Path
-
 import streamlit as st
 
 BASE_DIR = Path(__file__).resolve().parent.parent
