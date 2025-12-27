@@ -2,41 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8" />
-<script>
-  (function () {
-    if (window.Streamlit) return;
-
-    const RENDER_EVENT = "streamlit:render";
-    const events = new EventTarget();
-
-    function postMessage(type, payload) {
-      window.parent.postMessage({ type, ...payload }, "*");
-    }
-
-    window.Streamlit = {
-      RENDER_EVENT,
-      events,
-      setComponentReady: () =>
-        postMessage("streamlit:componentReady", { apiVersion: 1 }),
-      setComponentValue: value =>
-        postMessage("streamlit:setComponentValue", {
-          value,
-          dataType: "json",
-        }),
-      setFrameHeight: height =>
-        postMessage("streamlit:setFrameHeight", {
-          height: height || document.body.scrollHeight,
-        }),
-    };
-
-    window.addEventListener("message", event => {
-      const message = event.data;
-      if (!message || message.type !== RENDER_EVENT) return;
-
-      events.dispatchEvent(new CustomEvent(RENDER_EVENT, { detail: message }));
-    });
-  })();
-</script>
+<script src="https://cdn.jsdelivr.net/npm/streamlit-component-lib@1.4.0/dist/streamlit-component-lib.js"></script>
 <style>
 .grid {
   display:grid;
