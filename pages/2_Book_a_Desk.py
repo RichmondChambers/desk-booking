@@ -133,8 +133,8 @@ payload = {
 # --------------------------------------------------
 html = """
 <style>
-html, body { margin:0; padding:0; font-family:inherit; }
-* { box-sizing:border-box; font-family:inherit; }
+html, body { margin:0; padding:0; }
+* { box-sizing:border-box; }
 
 .grid { display:grid; grid-template-columns:90px repeat(%d,1fr); gap:12px; }
 .time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
