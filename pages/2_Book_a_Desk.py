@@ -36,37 +36,53 @@ selected_cells_str = st.text_input(
     label_visibility="collapsed",
 )
 
-selected_cells = (
-    selected_cells_str.split(",") if selected_cells_str else []
-)
+selected_cells = selected_cells_str.split(",") if selected_cells_str else []
 
-# ---- FIX: persist selection across reruns ----
+# Persist last known selection (helps across reruns, but not sufficient alone)
 if "confirmed_selected_cells" not in st.session_state:
     st.session_state.confirmed_selected_cells = []
 
 if selected_cells:
     st.session_state.confirmed_selected_cells = selected_cells
 
+# --- FIX 1: Use native input value setter (React/Streamlit controlled input) ---
 st.markdown(
     """
     <script>
     if (!window.deskBookingSelectionListenerAdded) {
       window.deskBookingSelectionListenerAdded = true;
-      window.addEventListener("message", (event) => {
-        if (!event.data || event.data.type !== "desk-booking-selection") {
-          return;
+
+      function setNativeValue(element, value) {
+        const valueSetter = Object.getOwnPropertyDescriptor(element.__proto__, 'value')?.set;
+        const prototype = Object.getPrototypeOf(element);
+        const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+        if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+          prototypeValueSetter.call(element, value);
+        } else if (valueSetter) {
+          valueSetter.call(element, value);
+        } else {
+          element.value = value;
         }
+      }
+
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "desk-booking-selection") return;
+
         const input =
           document.querySelector('input[aria-label="selected_cells_hidden"]') ||
           document.querySelector('textarea[aria-label="selected_cells_hidden"]');
+
         if (!input) return;
+
         const value = Array.isArray(event.data.value)
           ? event.data.value.join(",")
           : "";
+
         if (input.value === value) return;
-        input.value = value;
+
+        setNativeValue(input, value);
         input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.dispatchEvent(new Event("change", { bubbles: true }));
       });
     }
     </script>
@@ -173,42 +189,61 @@ payload = {
 html = """
 <style>
 * { box-sizing:border-box; }
+
 .grid {
   display:grid;
   grid-template-columns:90px repeat(%d,1fr);
   gap:12px;
+  font-family: "Source Sans Pro", sans-serif;
 }
-.time,.header { text-align:center; font-size:14px; }
+.time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
 .header { font-weight:600; }
+
 .cell {
   height:42px;
   border-radius:10px;
-  border:1px solid rgba(0,0,0,0.2);
+  border:1px solid rgba(255,255,255,0.25);
 }
 .available { background:#ffffff; cursor:pointer; }
 .available:hover { outline:2px solid #009fdf; }
 .selected { background:#009fdf !important; }
 .booked { background:#c0392b; cursor:not-allowed; }
 .past { background:#2c2c2c; cursor:not-allowed; }
+
+#info {
+  margin-bottom:12px;
+  padding:10px 14px;
+  border-radius:10px;
+  background:rgba(255,255,255,0.08);
+  color:#e5e7eb;
+  font-family: "Source Sans Pro", sans-serif;
+}
 </style>
 
+<div id="info">Drag to select contiguous time slots.</div>
 <div class="grid" id="grid"></div>
 
 <script>
 const data = %s;
 const grid = document.getElementById("grid");
+const info = document.getElementById("info");
 
 let selected = new Set();
 let dragging = false;
 
-function pushSelection() {
-  window.parent.postMessage(
-    { type: "desk-booking-selection", value: Array.from(selected) },
-    "*"
-  );
+function status(key) {
+  if (data.booked.includes(key)) return "Booked";
+  if (data.past.includes(key)) return "Past";
+  return "Available";
 }
 
-// Header
+// --- FIX 2: postMessage to the current window, not parent ---
+function pushSelection() {
+  const value = Array.from(selected);
+  window.postMessage({ type: "desk-booking-selection", value }, "*");
+}
+
+// Header row
 grid.appendChild(document.createElement("div"));
 data.desks.forEach(d => {
   const h = document.createElement("div");
@@ -217,7 +252,7 @@ data.desks.forEach(d => {
   grid.appendChild(h);
 });
 
-// Rows
+// Time rows
 data.times.forEach(t => {
   const tl = document.createElement("div");
   tl.className = "time";
@@ -231,6 +266,11 @@ data.times.forEach(t => {
     if (data.booked.includes(key)) c.className = "cell booked";
     else if (data.past.includes(key)) c.className = "cell past";
     else c.className = "cell available";
+
+    c.onmouseenter = () => {
+      info.innerText =
+        `${data.dateLabel} · ${data.deskNames[d]} · ${t} · ${status(key)}`;
+    };
 
     c.onmousedown = () => {
       if (!c.classList.contains("available")) return;
@@ -268,9 +308,17 @@ st.html(html, unsafe_allow_javascript=True)
 st.divider()
 st.subheader("Confirm booking")
 
+# Read latest confirmed selection from session state
 confirmed_cells = st.session_state.get("confirmed_selected_cells", [])
 
 if st.button("Confirm booking", type="primary", use_container_width=True):
+
+    # Re-read in case this rerun captured new input state
+    selected_cells_str_now = st.session_state.get("selected_cells_hidden", "")
+    selected_cells_now = selected_cells_str_now.split(",") if selected_cells_str_now else []
+    if selected_cells_now:
+        st.session_state.confirmed_selected_cells = selected_cells_now
+        confirmed_cells = selected_cells_now
 
     if not confirmed_cells:
         st.warning("Please select one or more time slots.")
@@ -279,15 +327,14 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
     by_desk = {}
     for cell in confirmed_cells:
         desk_id, t = cell.split("_")
-        by_desk.setdefault(int(desk_id), []).append(
-            time.fromisoformat(t)
-        )
+        by_desk.setdefault(int(desk_id), []).append(time.fromisoformat(t))
 
     conn = get_conn()
 
     for desk_id, times in by_desk.items():
         times.sort()
 
+        # Require contiguous slots
         for a, b in zip(times, times[1:]):
             if (
                 datetime.combine(selected_date, b)
@@ -297,16 +344,14 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
                 st.error("Selected time slots must be continuous.")
                 st.stop()
 
+        # Prevent past bookings
         if any(is_past(t) for t in times):
             conn.close()
             st.error("Cannot book time slots in the past.")
             st.stop()
 
         start = times[0]
-        end = (
-            datetime.combine(selected_date, times[-1])
-            + timedelta(minutes=STEP)
-        ).time()
+        end = (datetime.combine(selected_date, times[-1]) + timedelta(minutes=STEP)).time()
 
         conflict = conn.execute(
             """
@@ -318,12 +363,7 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
               AND start_time < ?
               AND end_time > ?
             """,
-            (
-                desk_id,
-                date_iso,
-                end.isoformat(),
-                start.isoformat(),
-            ),
+            (desk_id, date_iso, end.isoformat(), start.isoformat()),
         ).fetchone()
 
         if conflict:
@@ -337,20 +377,15 @@ if st.button("Confirm booking", type="primary", use_container_width=True):
             (user_id, desk_id, date, start_time, end_time, status, checked_in)
             VALUES (?, ?, ?, ?, ?, 'booked', 0)
             """,
-            (
-                user_id,
-                desk_id,
-                date_iso,
-                start.isoformat(),
-                end.isoformat(),
-            ),
+            (user_id, desk_id, date_iso, start.isoformat(), end.isoformat()),
         )
 
     conn.commit()
     conn.close()
 
-    # ---- FIX: clear cached selection ----
+    # Clear cached selection after success
     st.session_state.confirmed_selected_cells = []
+    st.session_state.selected_cells_hidden = ""
 
     st.success("Booking confirmed.")
     st.rerun()
