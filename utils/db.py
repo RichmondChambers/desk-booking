@@ -24,17 +24,24 @@ def _secret_db_path() -> str | None:
 
     return None
 
-DB_PATH = Path(
-    os.getenv(
-        "DESK_BOOKING_DB_PATH",
-        _secret_db_path()
-        or (
-            PERSISTENT_DATA_DIR / "desk-booking.db"
-            if PERSISTENT_DATA_DIR.is_dir()
-            else Path.home() / ".desk-booking" / "data.db"
-        ),
-    )
-).expanduser()
+def _resolve_db_path() -> Path:
+    env_path = os.getenv("DESK_BOOKING_DB_PATH")
+    if env_path:
+        return Path(env_path)
+
+    secret_path = _secret_db_path()
+    if secret_path:
+        return Path(secret_path)
+
+    if DEFAULT_DB_PATH.exists():
+        return DEFAULT_DB_PATH
+
+    if PERSISTENT_DATA_DIR.is_dir():
+        return PERSISTENT_DATA_DIR / "desk-booking.db"
+
+    return Path.home() / ".desk-booking" / "data.db"
+
+DB_PATH = _resolve_db_path().expanduser()
 
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 BACKUP_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -98,34 +105,7 @@ def init_db():
     # ---------------------------------------------------
     # DESKS TABLE
     # ---------------------------------------------------
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS desks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            location TEXT,
-            is_active INTEGER DEFAULT 1,
-            admin_only INTEGER DEFAULT 0
-        )
-    """)
-
-    # ---------------------------------------------------
-    # BOOKINGS TABLE
-    # ---------------------------------------------------
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS bookings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            desk_id INTEGER,
-            date TEXT,
-            start_time TEXT,
-            end_time TEXT,
-            status TEXT,
-            checked_in INTEGER DEFAULT 0
-        )
-    """)
-
-    # ---------------------------------------------------
-    # AUDIT LOG TABLE
+@@ -61,49 +136,68 @@ def init_db():
     # ---------------------------------------------------
     c.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
