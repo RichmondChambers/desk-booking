@@ -6,6 +6,9 @@ from utils.db import ensure_db, get_conn
 from utils.auth import require_login
 from utils.styles import apply_lato_font
 
+# --------------------------------------------------
+# PAGE SETUP
+# --------------------------------------------------
 st.set_page_config(page_title="Book a Desk", layout="wide")
 apply_lato_font()
 st.title("Book a Desk")
@@ -36,6 +39,13 @@ selected_cells_str = st.text_input(
 selected_cells = (
     selected_cells_str.split(",") if selected_cells_str else []
 )
+
+# ---- FIX: persist selection across reruns ----
+if "confirmed_selected_cells" not in st.session_state:
+    st.session_state.confirmed_selected_cells = []
+
+if selected_cells:
+    st.session_state.confirmed_selected_cells = selected_cells
 
 st.markdown(
     """
@@ -158,69 +168,47 @@ payload = {
 }
 
 # --------------------------------------------------
-# GRID HTML + JS (FULL, CORRECT)
+# GRID HTML + JS
 # --------------------------------------------------
 html = """
 <style>
 * { box-sizing:border-box; }
-
 .grid {
   display:grid;
   grid-template-columns:90px repeat(%d,1fr);
   gap:12px;
-  font-family: "Source Sans Pro", sans-serif;
 }
-.time,.header { color:#e5e7eb; text-align:center; font-size:14px; }
+.time,.header { text-align:center; font-size:14px; }
 .header { font-weight:600; }
-
 .cell {
   height:42px;
   border-radius:10px;
-  border:1px solid rgba(255,255,255,0.25);
+  border:1px solid rgba(0,0,0,0.2);
 }
-
 .available { background:#ffffff; cursor:pointer; }
 .available:hover { outline:2px solid #009fdf; }
 .selected { background:#009fdf !important; }
 .booked { background:#c0392b; cursor:not-allowed; }
 .past { background:#2c2c2c; cursor:not-allowed; }
-
-#info {
-  margin-bottom:12px;
-  padding:10px 14px;
-  border-radius:10px;
-  background:rgba(255,255,255,0.08);
-  color:#e5e7eb;
-  font-family: "Source Sans Pro", sans-serif;
-}
 </style>
 
-<div id="info">Drag to select contiguous time slots.</div>
 <div class="grid" id="grid"></div>
 
 <script>
 const data = %s;
 const grid = document.getElementById("grid");
-const info = document.getElementById("info");
 
 let selected = new Set();
 let dragging = false;
 
-function status(key) {
-  if (data.booked.includes(key)) return "Booked";
-  if (data.past.includes(key)) return "Past";
-  return "Available";
-}
-
 function pushSelection() {
-  const value = Array.from(selected);
   window.parent.postMessage(
-    { type: "desk-booking-selection", value },
+    { type: "desk-booking-selection", value: Array.from(selected) },
     "*"
   );
 }
 
-// Header row
+// Header
 grid.appendChild(document.createElement("div"));
 data.desks.forEach(d => {
   const h = document.createElement("div");
@@ -229,7 +217,7 @@ data.desks.forEach(d => {
   grid.appendChild(h);
 });
 
-// Time rows
+// Rows
 data.times.forEach(t => {
   const tl = document.createElement("div");
   tl.className = "time";
@@ -243,11 +231,6 @@ data.times.forEach(t => {
     if (data.booked.includes(key)) c.className = "cell booked";
     else if (data.past.includes(key)) c.className = "cell past";
     else c.className = "cell available";
-
-    c.onmouseenter = () => {
-      info.innerText =
-        `${data.dateLabel} · ${data.deskNames[d]} · ${t} · ${status(key)}`;
-    };
 
     c.onmousedown = () => {
       if (!c.classList.contains("available")) return;
@@ -285,13 +268,16 @@ st.html(html, unsafe_allow_javascript=True)
 st.divider()
 st.subheader("Confirm booking")
 
-if st.button("Confirm booking", type="primary"):
-    if not selected_cells:
+confirmed_cells = st.session_state.get("confirmed_selected_cells", [])
+
+if st.button("Confirm booking", type="primary", use_container_width=True):
+
+    if not confirmed_cells:
         st.warning("Please select one or more time slots.")
         st.stop()
 
     by_desk = {}
-    for cell in selected_cells:
+    for cell in confirmed_cells:
         desk_id, t = cell.split("_")
         by_desk.setdefault(int(desk_id), []).append(
             time.fromisoformat(t)
@@ -302,7 +288,6 @@ if st.button("Confirm booking", type="primary"):
     for desk_id, times in by_desk.items():
         times.sort()
 
-        # Require contiguous slots
         for a, b in zip(times, times[1:]):
             if (
                 datetime.combine(selected_date, b)
@@ -312,7 +297,6 @@ if st.button("Confirm booking", type="primary"):
                 st.error("Selected time slots must be continuous.")
                 st.stop()
 
-        # Prevent past bookings
         if any(is_past(t) for t in times):
             conn.close()
             st.error("Cannot book time slots in the past.")
@@ -364,6 +348,9 @@ if st.button("Confirm booking", type="primary"):
 
     conn.commit()
     conn.close()
+
+    # ---- FIX: clear cached selection ----
+    st.session_state.confirmed_selected_cells = []
 
     st.success("Booking confirmed.")
     st.rerun()
