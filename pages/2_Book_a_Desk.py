@@ -37,31 +37,18 @@ selected_cells = (
     selected_cells_str.split(",") if selected_cells_str else []
 )
 
-st.html(
+st.markdown(
     """
     <script>
-    (function () {
-      if (window.deskBookingSelectionListenerAdded) {
-        return;
-      }
+    if (!window.deskBookingSelectionListenerAdded) {
       window.deskBookingSelectionListenerAdded = true;
-
-      function findSelectionInput() {
-        return (
-          document.querySelector('input[aria-label="selected_cells_hidden"]') ||
-          document.querySelector('textarea[aria-label="selected_cells_hidden"]') ||
-          document.querySelector('input[id*="selected_cells_hidden"]') ||
-          document.querySelector('textarea[id*="selected_cells_hidden"]') ||
-          document.querySelector('input[name*="selected_cells_hidden"]') ||
-          document.querySelector('textarea[name*="selected_cells_hidden"]')
-        );
-      }
-
       window.addEventListener("message", (event) => {
         if (!event.data || event.data.type !== "desk-booking-selection") {
           return;
         }
-        const input = findSelectionInput();
+        const input =
+          document.querySelector('input[aria-label="selected_cells_hidden"]') ||
+          document.querySelector('textarea[aria-label="selected_cells_hidden"]');
         if (!input) return;
         const value = Array.isArray(event.data.value)
           ? event.data.value.join(",")
@@ -71,10 +58,10 @@ st.html(
         input.dispatchEvent(new Event("input", { bubbles: true }));
         input.dispatchEvent(new Event("change", { bubbles: true }));
       });
-    })();
+    }
     </script>
     """,
-    unsafe_allow_javascript=True,
+    unsafe_allow_html=True,
 )
 
 # --------------------------------------------------
