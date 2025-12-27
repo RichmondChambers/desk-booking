@@ -184,6 +184,14 @@ def seed_desks() -> None:
     Insert default desks if none exist.
     Safe to run multiple times.
     """
+    default_desks = [
+        {"name": f"Desk {i}", "location": "Office", "admin_only": 0}
+        for i in range(1, 13)
+    ] + [
+        {"name": f"Desk {i}", "location": "Admin", "admin_only": 1}
+        for i in range(13, 16)
+    ]
+
     conn = get_conn()
     c = conn.cursor()
 
@@ -195,6 +203,7 @@ def seed_desks() -> None:
     ).fetchall()
     existing_by_name = {row["name"]: row["id"] for row in existing_desks}
     backup_desks = _load_desks_backup()
+    changed = False
 
     if backup_desks:
         for desk in backup_desks:
@@ -226,19 +235,42 @@ def seed_desks() -> None:
                 )
 
         conn.commit()
-    elif not existing_desks:
-        c.executemany(
-            """
-            INSERT INTO desks (name, location)
-            VALUES (?, ?)
-            """,
-            [
-                ("Desk 1", "Office"),
-                ("Desk 2", "Office"),
-                ("Desk 3", "Office"),
-            ],
-        )
 
+    for desk in default_desks:
+        name = desk["name"]
+        location = desk["location"]
+        admin_only = desk["admin_only"]
+        is_active = 1
+        existing_id = existing_by_name.get(name)
+
+        if existing_id is None:
+            c.execute(
+                """
+                INSERT INTO desks (name, location, is_active, admin_only)
+                VALUES (?, ?, ?, ?)
+                """,
+                (name, location, is_active, admin_only),
+            )
+            existing_by_name[name] = c.lastrowid
+            changed = True
+        else:
+            c.execute(
+                """
+                UPDATE desks
+                SET location = ?, is_active = ?, admin_only = ?
+                WHERE id = ?
+                """,
+                (location, is_active, admin_only, existing_id),
+            )
+            changed = True
+
+    if not existing_desks:
+        changed = True
+
+    if changed:
         conn.commit()
+        conn.close()
+        write_desks_backup()
+        return
 
     conn.close()
