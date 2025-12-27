@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 # --------------------------------------------------
 desk_booking_component = components.declare_component(
     "desk_booking_component",
-    path=str(Path(__file__).parent / "desk_booking_component"),
+    path=str(Path(__file__).resolve().parent.parent / "desk_booking_component"),
 )
 
 def desk_booking_grid(payload, height=520):
