@@ -4,8 +4,10 @@ import json
 
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
+from utils.styles import apply_lato_font
 
 st.set_page_config(page_title="Book a Desk", layout="wide")
+apply_lato_font()
 st.title("Book a Desk")
 
 # --------------------------------------------------

@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
 from utils.db import ensure_db, get_conn
+from utils.styles import apply_lato_font
 
 if st.session_state.role != "admin":
     st.error("HR access only.")
     st.stop()
 
+apply_lato_font()
 st.title("HR Compliance Reporting")
 ensure_db()
 
