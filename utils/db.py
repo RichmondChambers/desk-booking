@@ -37,20 +37,13 @@ def _resolve_db_path() -> Path:
     if secret_path:
         return Path(secret_path)
 
-    persistent_candidate = PERSISTENT_DATA_DIR / "desk-booking.db"
-    if PERSISTENT_DATA_DIR.is_dir() and (
-        os.path.ismount(PERSISTENT_DATA_DIR) or persistent_candidate.exists()
-    ):
-        return persistent_candidate
-
-    home_candidate = Path.home() / ".desk-booking" / "data.db"
-    if home_candidate.exists():
-        return home_candidate
+    if PERSISTENT_DATA_DIR.is_dir():
+        return PERSISTENT_DATA_DIR / "desk-booking.db"
 
     if DEFAULT_DB_PATH.exists():
         return DEFAULT_DB_PATH
 
-    return home_candidate
+    return Path.home() / ".desk-booking" / "data.db"
 
 
 DB_PATH = _resolve_db_path().expanduser()
