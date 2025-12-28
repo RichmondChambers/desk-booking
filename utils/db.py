@@ -10,37 +10,52 @@ import streamlit as st
 # RESOLVE A GUARANTEED-PERSISTENT DATA DIRECTORY
 # ===================================================
 
-def _resolve_data_dir() -> Path:
+def _resolve_data_dir() -> tuple[Path, bool]:
     """
     Priority:
-    1. Streamlit Cloud persistent volume (/data) IF writable
-    2. Project-local ./data directory
-    Otherwise: crash (no silent data loss)
+    1. Explicit DESK_BOOKING_DATA_DIR (recommended for production)
+    2. Streamlit Cloud persistent volume (/data) IF writable
+    3. User home directory (~/.desk-booking)
+    4. Project-local ./data directory (fallback)
     """
 
-    candidates = [
-        Path("/data"),
-        Path(__file__).resolve().parent.parent / "data",
+    env_dir = os.getenv("DESK_BOOKING_DATA_DIR")
+
+    candidates: list[tuple[Path, bool] | Path] = []
+    if env_dir:
+        candidates.append((Path(env_dir).expanduser(), True))
+    candidates.append((Path("/data"), True))
+    candidates.append((Path.home() / ".desk-booking", False))
+    candidates.append((Path(__file__).resolve().parent.parent / "data", False))
+
+    normalized: list[tuple[Path, bool]] = [
+        (candidate, False) if isinstance(candidate, Path) else candidate
+        for candidate in candidates
     ]
 
-    for path in candidates:
+    for path, is_persistent in normalized:
         try:
             path.mkdir(parents=True, exist_ok=True)
             test_file = path / ".write_test"
             test_file.write_text("ok")
             test_file.unlink()
-            return path
+            return path, is_persistent
         except Exception:
             continue
 
     raise RuntimeError(
-        "No writable persistent data directory available. "
+        "No writable data directory available. "
         "Bookings cannot be safely stored."
     )
 
 
-DATA_DIR = _resolve_data_dir()
-DB_PATH = DATA_DIR / "desk-booking.db"
+DATA_DIR, DATA_DIR_IS_PERSISTENT = _resolve_data_dir()
+db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
+if db_path_env:
+    DB_PATH = Path(db_path_env).expanduser()
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+else:
+    DB_PATH = DATA_DIR / "desk-booking.db"
 DESK_BACKUP_PATH = DATA_DIR / "desks.json"
 
 
@@ -222,5 +237,14 @@ def seed_desks() -> None:
 # ===================================================
 
 def ensure_db() -> None:
+    if not DATA_DIR_IS_PERSISTENT and not st.session_state.get(
+        "storage_warning_shown", False
+    ):
+        st.warning(
+            "Desk bookings are stored in a local data folder that may not "
+            "persist across restarts. Set DESK_BOOKING_DATA_DIR or mount /data "
+            "for permanent storage."
+        )
+        st.session_state["storage_warning_shown"] = True
     init_db()
     seed_desks()
