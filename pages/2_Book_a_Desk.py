@@ -153,7 +153,7 @@ for row in rows:
 st.subheader("Availability overview")
 st.caption("Tip: click or drag across available cells to prefill the selection below.")
 
-view_mode = "Compact"
+view_mode = st.radio("View density", ["Compact", "Comfortable"], horizontal=True)
 
 legend_col, filter_col = st.columns([2, 3])
 
