@@ -246,9 +246,51 @@ for desk_id in DESK_IDS:
         continue
 
     labels = [time_label(t) for t in available]
+    label_to_time = {time_label(t): t for t in available}
 
-    st.selectbox(
+    start_value = st.selectbox(
         "Start time",
         ["—"] + labels,
         key=f"start_{desk_id}_{date_iso}",
     )
+
+    if start_value != "—":
+        start_time = label_to_time[start_value]
+        start_index = available.index(start_time)
+        contiguous_slots = [start_time]
+        for next_time in available[start_index + 1:]:
+            expected_next = (
+                datetime.combine(selected_date, contiguous_slots[-1])
+                + timedelta(minutes=STEP)
+            ).time()
+            if next_time == expected_next:
+                contiguous_slots.append(next_time)
+            else:
+                break
+
+        end_options = [
+            time_label(
+                (datetime.combine(selected_date, t) + timedelta(minutes=STEP)).time()
+            )
+            for t in contiguous_slots
+        ]
+
+        end_value = st.selectbox(
+            "End time",
+            ["—"] + end_options,
+            key=f"end_{desk_id}_{date_iso}",
+        )
+
+        if end_value != "—":
+            end_time = datetime.strptime(end_value, "%H:%M").time()
+            duration_minutes = int(
+                (
+                    datetime.combine(selected_date, end_time)
+                    - datetime.combine(selected_date, start_time)
+                ).total_seconds()
+                / 60
+            )
+            st.caption(
+                f"Selected: {DESK_NAMES[desk_id]} from {start_value}–{end_value} "
+                f"({duration_minutes} mins)"
+            )
