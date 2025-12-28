@@ -23,11 +23,16 @@ def _resolve_data_dir() -> tuple[Path, bool]:
     allow_ephemeral = os.getenv("DESK_BOOKING_ALLOW_EPHEMERAL") == "1"
 
     candidates: list[tuple[Path, bool]] = []
+
     if env_dir:
         candidates.append((Path(env_dir).expanduser(), True))
+
     candidates.append((Path("/data"), True))
+
     if allow_ephemeral:
-        candidates.append((Path(__file__).resolve().parent.parent / "data", False))
+        candidates.append(
+            (Path(__file__).resolve().parent.parent / "data", False)
+        )
 
     for path, is_persistent in candidates:
         try:
@@ -51,13 +56,24 @@ def _resolve_data_dir() -> tuple[Path, bool]:
     )
 
 
-DATA_DIR, _DATA_DIR_IS_PERSISTENT = _resolve_data_dir()
+# ===================================================
+# PATH RESOLUTION
+# ===================================================
+
+DATA_DIR, DATA_DIR_IS_PERSISTENT = _resolve_data_dir()
+
 db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
 if db_path_env:
     DB_PATH = Path(db_path_env).expanduser()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 else:
     DB_PATH = DATA_DIR / "desk-booking.db"
+
+if not DB_PATH.parent.exists():
+    raise RuntimeError(
+        "Database directory does not exist or is not writable."
+    )
+
 DESK_BACKUP_PATH = DATA_DIR / "desks.json"
 
 
@@ -186,17 +202,20 @@ def write_desks_backup() -> None:
 
 
 # ===================================================
-# SEED DEFAULT DESKS (SAFE)
+# SEED DEFAULT DESKS (SAFE + IDEMPOTENT)
 # ===================================================
 
 def seed_desks() -> None:
-    default_desks = [
-        {"name": f"Desk {i}", "location": "Office", "admin_only": 0}
-        for i in range(1, 13)
-    ] + [
-        {"name": f"Desk {i}", "location": "Admin", "admin_only": 1}
-        for i in range(13, 16)
-    ]
+    default_desks = (
+        [
+            {"name": f"Desk {i}", "location": "Office", "admin_only": 0}
+            for i in range(1, 13)
+        ]
+        + [
+            {"name": f"Desk {i}", "location": "Admin", "admin_only": 1}
+            for i in range(13, 16)
+        ]
+    )
 
     conn = get_conn()
     c = conn.cursor()
@@ -248,5 +267,6 @@ def ensure_db() -> None:
             "for permanent storage."
         )
         st.session_state["storage_warning_shown"] = True
+
     init_db()
     seed_desks()
