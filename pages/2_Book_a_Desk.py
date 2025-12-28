@@ -3,19 +3,6 @@ from datetime import datetime, date, time, timedelta
 
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
-from utils.styles import apply_lato_font
-
-
-# --------------------------------------------------
-# LOCAL CSS (optional)
-# --------------------------------------------------
-HEADER_STYLE = """
-<style>
-/* Optional: keep minimal to avoid conflicting with utils.styles */
-.block-container { padding-top: 2rem; }
-</style>
-"""
-
 
 # --------------------------------------------------
 # CONFIG
@@ -58,7 +45,6 @@ def time_label(t: time) -> str:
 st.set_page_config(page_title="Book a Desk", layout="wide")
 apply_lato_font()
 st.title("Book a Desk")
-st.markdown(HEADER_STYLE, unsafe_allow_html=True)
 
 # --------------------------------------------------
 # AUTH & DB
