@@ -45,10 +45,11 @@ def _resolve_db_path() -> Path:
             shutil.copy2(DEFAULT_DB_PATH, persistent_db)
         return persistent_db
 
-    if DEFAULT_DB_PATH.exists():
-        return DEFAULT_DB_PATH
-
-    return Path.home() / ".desk-booking" / "data.db"
+    fallback_db = Path.home() / ".desk-booking" / "data.db"
+    if DEFAULT_DB_PATH.exists() and not fallback_db.exists():
+        fallback_db.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(DEFAULT_DB_PATH, fallback_db)
+    return fallback_db
 
 
 DB_PATH = _resolve_db_path().expanduser()
