@@ -243,10 +243,10 @@ grid_builder.configure_default_column(
     filter=False,
     cellStyle=cell_style,
     valueFormatter=value_formatter,
-    minWidth=90,
-    width=100,
+    minWidth=110,
+    width=120,
 )
-grid_builder.configure_column("Time", pinned="left", width=80)
+grid_builder.configure_column("Time", pinned="left", width=90)
 grid_builder.configure_grid_options(
     headerHeight=header_height,
     rowHeight=row_height,
