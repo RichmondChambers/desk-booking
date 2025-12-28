@@ -195,27 +195,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-legend_col, filter_col = st.columns([2, 3])
+st.markdown(
+    """
+    <div style="display:flex; gap:16px; align-items:center; justify-content:center; margin:8px 0; text-align:center;">
+        <div><span style="display:inline-block;width:14px;height:14px;background:#ffffff;border-radius:3px;border:1px solid #d0d0d0;"></span> Available</div>
+        <div><span style="display:inline-block;width:14px;height:14px;background:#009fdf;border-radius:3px;"></span> Booked (initials)</div>
+        <div><span style="display:inline-block;width:14px;height:14px;background:#f2f2f2;border-radius:3px;"></span> Past</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-with legend_col:
-    st.markdown(
-        """
-        <div style="display:flex; gap:16px; align-items:center; justify-content:center; margin:8px 0; text-align:center;">
-            <div><span style="display:inline-block;width:14px;height:14px;background:#009fdf;border-radius:3px;"></span> Available</div>
-            <div><span style="display:inline-block;width:14px;height:14px;background:#e0e0e0;border-radius:3px;"></span> Booked (initials)</div>
-            <div><span style="display:inline-block;width:14px;height:14px;background:#f2f2f2;border-radius:3px;"></span> Past</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-with filter_col:
-    hide_past = st.checkbox("Hide past times", value=False)
-    show_available_only = st.checkbox("Show only desks with availability", value=False)
-
-filtered_slots = [
-    t for t in slots if not (hide_past and is_past_slot(selected_date, t, now))
-]
+filtered_slots = slots
 
 grid_rows = []
 for t in filtered_slots:
@@ -234,13 +225,6 @@ for t in filtered_slots:
 
 grid_df = pd.DataFrame(grid_rows)
 
-if show_available_only and not grid_df.empty:
-    available_desks = [
-        desk for desk in DESK_NAMES.values()
-        if (grid_df[desk] == "Available").any()
-    ]
-    grid_df = grid_df[["Time"] + available_desks]
-
 # --------------------------------------------------
 # GRID SELECTION STATE
 # --------------------------------------------------
@@ -258,9 +242,9 @@ cell_style = JsCode(
         if (sel[key]) {
             return {backgroundColor:"#005f9e", color:"white", fontWeight:"700", textAlign:"center"};
         }
-        if (params.value === "Available") return {backgroundColor:"#009fdf", color:"white", textAlign:"center"};
+        if (params.value === "Available") return {backgroundColor:"#ffffff", color:"#111", textAlign:"center"};
         if (String(params.value).startsWith("Booked")) {
-            return {backgroundColor:"#e0e0e0", color:"#666", fontWeight:"700", textAlign:"center"};
+            return {backgroundColor:"#009fdf", color:"#ffffff", fontWeight:"700", textAlign:"center"};
         }
         if (params.value === "Past") return {backgroundColor:"#f2f2f2", color:"#999", textAlign:"center"};
         return {textAlign:"center"};
