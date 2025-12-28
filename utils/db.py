@@ -60,8 +60,6 @@ def _resolve_data_dir() -> tuple[Path, bool]:
 # PATH RESOLUTION
 # ===================================================
 
-DATA_DIR, DATA_DIR_IS_PERSISTENT = _resolve_data_dir()
-
 db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
 if db_path_env:
     DB_PATH = Path(db_path_env).expanduser()
