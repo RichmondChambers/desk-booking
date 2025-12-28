@@ -38,12 +38,16 @@ def _resolve_db_path() -> Path:
     if secret_path:
         return Path(secret_path)
 
-    if PERSISTENT_DATA_DIR.is_dir():
-        persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
-        if DEFAULT_DB_PATH.exists() and not persistent_db.exists():
-            persistent_db.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(DEFAULT_DB_PATH, persistent_db)
-        return persistent_db
+    try:
+        PERSISTENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if PERSISTENT_DATA_DIR.is_dir():
+            persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
+            if DEFAULT_DB_PATH.exists() and not persistent_db.exists():
+                persistent_db.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(DEFAULT_DB_PATH, persistent_db)
+            return persistent_db
+    except OSError:
+        pass
 
     fallback_db = Path.home() / ".desk-booking" / "data.db"
     if DEFAULT_DB_PATH.exists() and not fallback_db.exists():
