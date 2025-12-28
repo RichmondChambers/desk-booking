@@ -88,9 +88,6 @@ if not user_id or not can_book:
     st.error("You do not have permission to book desks.")
     st.stop()
 
-if st.session_state.pop("booking_success", False):
-    st.success("Desk booked")
-
 # --------------------------------------------------
 # DATE PICKER
 # --------------------------------------------------
@@ -381,8 +378,18 @@ else:
         )
 
 can_confirm = start_value != "Select start" and end_value != "Select end"
+booking_success = st.session_state.pop("booking_success", False)
 
-if st.button("Confirm desk booking", disabled=not can_confirm):
+confirm_col, message_col = st.columns([1, 3])
+
+with confirm_col:
+    confirm_clicked = st.button("Confirm desk booking", disabled=not can_confirm)
+
+with message_col:
+    if booking_success:
+        st.success("Desk booked")
+
+if confirm_clicked:
     if not can_confirm:
         st.error("Please select a start and end time.")
     else:
