@@ -155,9 +155,6 @@ for row in rows:
 # AVAILABILITY GRID
 # --------------------------------------------------
 st.subheader("Availability overview")
-st.caption("Tip: click or drag across available cells to prefill the selection below.")
-
-view_mode = st.radio("View density", ["Compact", "Comfortable"], horizontal=True)
 
 legend_col, filter_col = st.columns([2, 3])
 
@@ -238,8 +235,8 @@ value_formatter = JsCode(
     """
 )
 
-row_height = 28 if view_mode == "Compact" else 36
-header_height = 52 if view_mode == "Compact" else 60
+row_height = 28
+header_height = 52
 grid_height = header_height + (row_height * len(filtered_slots)) + 6
 
 grid_builder = GridOptionsBuilder.from_dataframe(grid_df)
