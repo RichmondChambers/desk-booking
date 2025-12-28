@@ -26,7 +26,7 @@ def generate_slots(selected_date: date):
     slots = []
     cur = datetime.combine(selected_date, START)
     end_dt = datetime.combine(selected_date, END)
-    while cur < end_dt:
+    while cur <= end_dt:
         slots.append(cur.time())
         cur += timedelta(minutes=STEP)
     return slots
@@ -153,8 +153,7 @@ for row in rows:
 st.subheader("Availability overview")
 st.caption("Tip: click or drag across available cells to prefill the selection below.")
 
-view_mode = st.radio("View density", ["Compact", "Comfortable"], horizontal=True)
-show_full_day = st.checkbox("Show full day without scrolling", value=True)
+view_mode = "Compact"
 
 legend_col, filter_col = st.columns([2, 3])
 
@@ -238,9 +237,6 @@ value_formatter = JsCode(
 row_height = 28 if view_mode == "Compact" else 36
 header_height = 52 if view_mode == "Compact" else 60
 grid_height = header_height + (row_height * len(filtered_slots)) + 6
-
-if not show_full_day:
-    grid_height = 420
 
 grid_builder = GridOptionsBuilder.from_dataframe(grid_df)
 grid_builder.configure_default_column(
