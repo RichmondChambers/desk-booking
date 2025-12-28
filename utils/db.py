@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -6,18 +7,41 @@ import streamlit as st
 
 
 # ===================================================
-# SINGLE, IMMUTABLE DATABASE LOCATION (PERSISTENT)
+# RESOLVE A GUARANTEED-PERSISTENT DATA DIRECTORY
 # ===================================================
 
-DB_PATH = Path("/data/desk-booking.db")
-DESK_BACKUP_PATH = Path("/data/desks.json")
+def _resolve_data_dir() -> Path:
+    """
+    Priority:
+    1. Streamlit Cloud persistent volume (/data) IF writable
+    2. Project-local ./data directory
+    Otherwise: crash (no silent data loss)
+    """
 
-# Fail fast if persistence is unavailable
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-if not DB_PATH.parent.is_dir():
-    raise RuntimeError("Persistent /data volume is not available")
+    candidates = [
+        Path("/data"),
+        Path(__file__).resolve().parent.parent / "data",
+    ]
 
-DESK_BACKUP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    for path in candidates:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            test_file = path / ".write_test"
+            test_file.write_text("ok")
+            test_file.unlink()
+            return path
+        except Exception:
+            continue
+
+    raise RuntimeError(
+        "No writable persistent data directory available. "
+        "Bookings cannot be safely stored."
+    )
+
+
+DATA_DIR = _resolve_data_dir()
+DB_PATH = DATA_DIR / "desk-booking.db"
+DESK_BACKUP_PATH = DATA_DIR / "desks.json"
 
 
 # ===================================================
@@ -28,7 +52,7 @@ def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
-    # Critical durability settings
+    # Durability guarantees
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = FULL")
@@ -44,7 +68,6 @@ def init_db() -> None:
     conn = get_conn()
     c = conn.cursor()
 
-    # USERS
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -58,7 +81,6 @@ def init_db() -> None:
         """
     )
 
-    # DESKS
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS desks (
@@ -71,7 +93,6 @@ def init_db() -> None:
         """
     )
 
-    # BOOKINGS (PERSISTENT & SAFE)
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS bookings (
@@ -89,7 +110,6 @@ def init_db() -> None:
         """
     )
 
-    # AUDIT LOG
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS audit_log (
@@ -131,24 +151,25 @@ def write_desks_backup() -> None:
     ).fetchall()
     conn.close()
 
-    backup_data = [
-        {
-            "name": row["name"],
-            "location": row["location"],
-            "is_active": row["is_active"],
-            "admin_only": row["admin_only"],
-        }
-        for row in desks
-    ]
-
     DESK_BACKUP_PATH.write_text(
-        json.dumps(backup_data, indent=2),
+        json.dumps(
+            [
+                {
+                    "name": d["name"],
+                    "location": d["location"],
+                    "is_active": d["is_active"],
+                    "admin_only": d["admin_only"],
+                }
+                for d in desks
+            ],
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
 
 # ===================================================
-# SEED DEFAULT DESKS (SAFE & IDEMPOTENT)
+# SEED DEFAULT DESKS (SAFE)
 # ===================================================
 
 def seed_desks() -> None:
@@ -166,9 +187,7 @@ def seed_desks() -> None:
     existing = c.execute("SELECT name FROM desks").fetchall()
     existing_names = {row["name"] for row in existing}
 
-    backup_desks = _load_desks_backup()
-
-    for desk in backup_desks:
+    for desk in _load_desks_backup():
         if desk["name"] not in existing_names:
             c.execute(
                 """
@@ -195,7 +214,6 @@ def seed_desks() -> None:
 
     conn.commit()
     conn.close()
-
     write_desks_backup()
 
 
