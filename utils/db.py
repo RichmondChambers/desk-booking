@@ -31,6 +31,10 @@ def _resolve_data_dir() -> tuple[Path, bool]:
 
     for path, is_persistent in candidates:
         try:
+            if isinstance(candidate, tuple):
+                path, is_persistent = candidate
+            else:
+                path, is_persistent = candidate, False
             path.mkdir(parents=True, exist_ok=True)
             test_file = path / ".write_test"
             test_file.write_text("ok")
