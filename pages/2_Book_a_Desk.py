@@ -171,14 +171,36 @@ for row in rows:
 # --------------------------------------------------
 # AVAILABILITY GRID
 # --------------------------------------------------
-st.subheader("Availability overview")
+st.markdown(
+    """
+    <style>
+    .ag-header-cell-label {
+        justify-content: center;
+    }
+    .ag-header-cell-text {
+        text-align: center;
+        width: 100%;
+    }
+    .ag-cell {
+        text-align: center;
+    }
+    [data-testid="stCheckbox"] label {
+        justify-content: center;
+        text-align: center;
+        width: 100%;
+    }
+    </style>
+    <h2 style="text-align:center;">Availability overview</h2>
+    """,
+    unsafe_allow_html=True,
+)
 
 legend_col, filter_col = st.columns([2, 3])
 
 with legend_col:
     st.markdown(
         """
-        <div style="display:flex; gap:16px; align-items:center; margin:8px 0;">
+        <div style="display:flex; gap:16px; align-items:center; justify-content:center; margin:8px 0; text-align:center;">
             <div><span style="display:inline-block;width:14px;height:14px;background:#009fdf;border-radius:3px;"></span> Available</div>
             <div><span style="display:inline-block;width:14px;height:14px;background:#e0e0e0;border-radius:3px;"></span> Booked (initials)</div>
             <div><span style="display:inline-block;width:14px;height:14px;background:#f2f2f2;border-radius:3px;"></span> Past</div>
@@ -234,14 +256,14 @@ cell_style = JsCode(
         const sel = params.context.selected || {};
         const key = params.colDef.field + "_" + params.data.Time;
         if (sel[key]) {
-            return {backgroundColor:"#005f9e", color:"white", fontWeight:"700"};
+            return {backgroundColor:"#005f9e", color:"white", fontWeight:"700", textAlign:"center"};
         }
-        if (params.value === "Available") return {backgroundColor:"#009fdf", color:"white"};
+        if (params.value === "Available") return {backgroundColor:"#009fdf", color:"white", textAlign:"center"};
         if (String(params.value).startsWith("Booked")) {
-            return {backgroundColor:"#e0e0e0", color:"#666", fontWeight:"700"};
+            return {backgroundColor:"#e0e0e0", color:"#666", fontWeight:"700", textAlign:"center"};
         }
-        if (params.value === "Past") return {backgroundColor:"#f2f2f2", color:"#999"};
-        return {};
+        if (params.value === "Past") return {backgroundColor:"#f2f2f2", color:"#999", textAlign:"center"};
+        return {textAlign:"center"};
     }
     """
 )
