@@ -169,6 +169,7 @@ def list_user_bookings(user_id: int, include_cancelled: bool = False) -> list[Bo
 
 def list_all_bookings(filters: dict | None = None) -> list[BookingRecord]:
     query: firestore.Query = _collection()
+    order_in_firestore = True
     if filters:
         if "status" in filters:
             query = query.where("status", "==", filters["status"])
@@ -178,12 +179,17 @@ def list_all_bookings(filters: dict | None = None) -> list[BookingRecord]:
             query = query.where("desk_id", "==", int(filters["desk_id"]))
         if "booking_date" in filters:
             query = query.where("booking_date", "==", _format_date(filters["booking_date"]))
+            order_in_firestore = False
         if "start_date" in filters:
             query = query.where("booking_date", ">=", _format_date(filters["start_date"]))
         if "end_date" in filters:
             query = query.where("booking_date", "<=", _format_date(filters["end_date"]))
-    query = query.order_by("booking_date", direction=firestore.Query.DESCENDING).order_by("start_minutes")
-    return [_doc_to_record(doc) for doc in query.stream()]
+    if order_in_firestore:
+        query = query.order_by("booking_date", direction=firestore.Query.DESCENDING).order_by("start_minutes")
+    records = [_doc_to_record(doc) for doc in query.stream()]
+    if not order_in_firestore:
+        records.sort(key=lambda record: (record.booking_date, record.start_time))
+    return records
 
 
 def cancel_booking(booking_id: str, cancelled_by: str, reason: str | None = None) -> None:
