@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -38,7 +39,11 @@ def _resolve_db_path() -> Path:
         return Path(secret_path)
 
     if PERSISTENT_DATA_DIR.is_dir():
-        return PERSISTENT_DATA_DIR / "desk-booking.db"
+        persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
+        if DEFAULT_DB_PATH.exists() and not persistent_db.exists():
+            persistent_db.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(DEFAULT_DB_PATH, persistent_db)
+        return persistent_db
 
     if DEFAULT_DB_PATH.exists():
         return DEFAULT_DB_PATH
