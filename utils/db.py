@@ -32,7 +32,8 @@ def _resolve_data_dir() -> tuple[Path, bool]:
     1) DESK_BOOKING_DB_PATH (parent directory)
     2) DESK_BOOKING_DATA_DIR
     3) /data (Streamlit Cloud)
-    4) ./data (only if DESK_BOOKING_ALLOW_EPHEMERAL=1)
+    4) ~/.desk-booking (local persistent default)
+    5) ./data (only if DESK_BOOKING_ALLOW_EPHEMERAL=1)
     """
 
     db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
@@ -55,7 +56,7 @@ def _resolve_data_dir() -> tuple[Path, bool]:
             "DESK_BOOKING_DATA_DIR is not writable."
         )
 
-    persistent_candidates = [Path("/data")]
+    persistent_candidates = [Path("/data"), Path.home() / ".desk-booking"]
     for candidate in persistent_candidates:
         if _is_writable_dir(candidate):
             return candidate, True
