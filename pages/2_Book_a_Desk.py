@@ -243,8 +243,8 @@ grid_builder.configure_default_column(
     filter=False,
     cellStyle=cell_style,
     valueFormatter=value_formatter,
-    minWidth=110,
-    width=120,
+    minWidth=90,
+    width=100,
 )
 grid_builder.configure_column("Time", pinned="left", width=90)
 grid_builder.configure_grid_options(
