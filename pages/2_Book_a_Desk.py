@@ -1,8 +1,10 @@
 import streamlit as st
+import pandas as pd
 from datetime import datetime, date, time, timedelta
 
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
+from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
 
 # --------------------------------------------------
 # CONFIG
@@ -118,6 +120,62 @@ for row in rows:
     for t in slots:
         if s <= t < e:
             booked[row["desk_id"]].add(t)
+
+# --------------------------------------------------
+# AVAILABILITY GRID
+# --------------------------------------------------
+st.subheader("Availability overview")
+
+grid_rows = []
+for t in slots:
+    row = {"Time": time_label(t)}
+    for desk_id in DESK_IDS:
+        if is_past_slot(selected_date, t, now):
+            status = "Past"
+        elif t in booked[desk_id]:
+            status = "Booked"
+        else:
+            status = "Available"
+        row[DESK_NAMES[desk_id]] = status
+    grid_rows.append(row)
+
+grid_df = pd.DataFrame(grid_rows)
+
+cell_style = JsCode(
+    """
+    function(params) {
+        if (params.value === "Available") {
+            return {backgroundColor: "#009fdf", color: "white", fontWeight: "600"};
+        }
+        if (params.value === "Booked") {
+            return {backgroundColor: "#e0e0e0", color: "#666"};
+        }
+        if (params.value === "Past") {
+            return {backgroundColor: "#f2f2f2", color: "#999"};
+        }
+        return {};
+    }
+    """
+)
+
+grid_builder = GridOptionsBuilder.from_dataframe(grid_df)
+grid_builder.configure_default_column(
+    resizable=True,
+    sortable=False,
+    filter=False,
+    cellStyle=cell_style,
+)
+grid_builder.configure_column("Time", pinned="left", cellStyle=None)
+grid_options = grid_builder.build()
+
+AgGrid(
+    grid_df,
+    gridOptions=grid_options,
+    height=420,
+    fit_columns_on_grid_load=True,
+    allow_unsafe_jscode=True,
+    theme="material",
+)
 
 # --------------------------------------------------
 # RANGE SELECTION UI (per desk)
