@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -8,8 +9,6 @@ import streamlit as st
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
 PERSISTENT_DATA_DIR = Path("/data")
-
-os.environ.setdefault("DESK_BOOKING_DB_PATH", str(DEFAULT_DB_PATH))
 
 
 # ---------------------------------------------------
@@ -40,7 +39,11 @@ def _resolve_db_path() -> Path:
         return Path(secret_path)
 
     if PERSISTENT_DATA_DIR.is_dir():
-        return PERSISTENT_DATA_DIR / "desk-booking.db"
+        persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
+        if DEFAULT_DB_PATH.exists() and not persistent_db.exists():
+            persistent_db.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(DEFAULT_DB_PATH, persistent_db)
+        return persistent_db
 
     if DEFAULT_DB_PATH.exists():
         return DEFAULT_DB_PATH
