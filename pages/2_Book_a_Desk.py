@@ -40,6 +40,36 @@ def time_label(t: time) -> str:
     return t.strftime("%H:%M")
 
 
+def availability_ranges(available_slots: list[time], selected_date: date) -> list[tuple[time, time]]:
+    if not available_slots:
+        return []
+
+    ranges = []
+    range_start = available_slots[0]
+    previous = available_slots[0]
+
+    for slot in available_slots[1:]:
+        expected_next = (
+            datetime.combine(selected_date, previous) + timedelta(minutes=STEP)
+        ).time()
+        if slot == expected_next:
+            previous = slot
+            continue
+
+        range_end = (
+            datetime.combine(selected_date, previous) + timedelta(minutes=STEP)
+        ).time()
+        ranges.append((range_start, range_end))
+        range_start = slot
+        previous = slot
+
+    range_end = (
+        datetime.combine(selected_date, previous) + timedelta(minutes=STEP)
+    ).time()
+    ranges.append((range_start, range_end))
+    return ranges
+
+
 # --------------------------------------------------
 # PAGE SETUP
 # --------------------------------------------------
@@ -229,6 +259,7 @@ AgGrid(
 # RANGE SELECTION UI (per desk)
 # --------------------------------------------------
 st.subheader("Select time range per desk")
+st.caption("Pick a start time first, then choose an end time from the contiguous availability.")
 
 selections = {}
 
@@ -245,16 +276,29 @@ for desk_id in DESK_IDS:
         st.info("No available slots.")
         continue
 
+    range_labels = [
+        f"{time_label(start)}–{time_label(end)}"
+        for start, end in availability_ranges(available, selected_date)
+    ]
+    total_minutes = len(available) * STEP
+    st.caption(
+        f"Availability windows: {', '.join(range_labels)} "
+        f"({total_minutes} mins available)"
+    )
+
     labels = [time_label(t) for t in available]
     label_to_time = {time_label(t): t for t in available}
 
-    start_value = st.selectbox(
-        "Start time",
-        ["—"] + labels,
-        key=f"start_{desk_id}_{date_iso}",
-    )
+    start_col, end_col = st.columns(2)
 
-    if start_value != "—":
+    with start_col:
+        start_value = st.selectbox(
+            "Start time",
+            ["Select start"] + labels,
+            key=f"start_{desk_id}_{date_iso}",
+        )
+
+    if start_value != "Select start":
         start_time = label_to_time[start_value]
         start_index = available.index(start_time)
         contiguous_slots = [start_time]
@@ -274,23 +318,29 @@ for desk_id in DESK_IDS:
             )
             for t in contiguous_slots
         ]
+    else:
+        end_options = []
 
+    with end_col:
         end_value = st.selectbox(
             "End time",
-            ["—"] + end_options,
+            ["Select end"] + end_options,
             key=f"end_{desk_id}_{date_iso}",
+            disabled=not end_options,
         )
 
-        if end_value != "—":
-            end_time = datetime.strptime(end_value, "%H:%M").time()
-            duration_minutes = int(
-                (
-                    datetime.combine(selected_date, end_time)
-                    - datetime.combine(selected_date, start_time)
-                ).total_seconds()
-                / 60
-            )
-            st.caption(
-                f"Selected: {DESK_NAMES[desk_id]} from {start_value}–{end_value} "
-                f"({duration_minutes} mins)"
-            )
+    if start_value != "Select start" and end_value != "Select end":
+        end_time = datetime.strptime(end_value, "%H:%M").time()
+        duration_minutes = int(
+            (
+                datetime.combine(selected_date, end_time)
+                - datetime.combine(selected_date, start_time)
+            ).total_seconds()
+            / 60
+        )
+        st.caption(
+            f"Selected: {DESK_NAMES[desk_id]} from {start_value}–{end_value} "
+            f"({duration_minutes} mins)"
+        )
+
+    st.divider()
