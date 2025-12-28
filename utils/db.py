@@ -22,19 +22,15 @@ def _resolve_data_dir() -> tuple[Path, bool]:
     env_dir = os.getenv("DESK_BOOKING_DATA_DIR")
     allow_ephemeral = os.getenv("DESK_BOOKING_ALLOW_EPHEMERAL") == "1"
 
-    candidates = []
+    candidates: list[tuple[Path, bool]] = []
     if env_dir:
-        candidates.append(Path(env_dir).expanduser())
-    candidates.append(Path("/data"))
+        candidates.append((Path(env_dir).expanduser(), True))
+    candidates.append((Path("/data"), True))
     if allow_ephemeral:
-        candidates.append(Path(__file__).resolve().parent.parent / "data")
+        candidates.append((Path(__file__).resolve().parent.parent / "data", False))
 
     for path, is_persistent in candidates:
         try:
-            if isinstance(candidate, tuple):
-                path, is_persistent = candidate
-            else:
-                path, is_persistent = candidate, False
             path.mkdir(parents=True, exist_ok=True)
             test_file = path / ".write_test"
             test_file.write_text("ok")
@@ -55,7 +51,7 @@ def _resolve_data_dir() -> tuple[Path, bool]:
     )
 
 
-DATA_DIR = _resolve_data_dir()
+DATA_DIR, _DATA_DIR_IS_PERSISTENT = _resolve_data_dir()
 db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
 if db_path_env:
     DB_PATH = Path(db_path_env).expanduser()
