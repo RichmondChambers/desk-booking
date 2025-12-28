@@ -26,7 +26,7 @@ def generate_slots(selected_date: date):
     slots = []
     cur = datetime.combine(selected_date, START)
     end_dt = datetime.combine(selected_date, END)
-    while cur < end_dt:
+    while cur <= end_dt:
         slots.append(cur.time())
         cur += timedelta(minutes=STEP)
     return slots
