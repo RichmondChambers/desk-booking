@@ -5,77 +5,85 @@ from pathlib import Path
 
 import streamlit as st
 
+DB_FILENAME = "desk-booking.db"
+DESK_BACKUP_FILENAME = "desks.json"
+
 
 # ===================================================
-# RESOLVE A GUARANTEED-PERSISTENT DATA DIRECTORY
+# DATA DIRECTORY RESOLUTION
 # ===================================================
+
+def _is_writable_dir(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        test_file = path / ".write_test"
+        test_file.write_text("ok", encoding="utf-8")
+        test_file.unlink()
+        return True
+    except OSError:
+        return False
+
 
 def _resolve_data_dir() -> tuple[Path, bool]:
     """
-    Priority:
-    1. Explicit DESK_BOOKING_DATA_DIR (recommended for production)
-    2. Streamlit Cloud persistent volume (/data) IF writable
-    3. Project-local ./data directory (only if explicitly allowed)
-    Otherwise: crash (no silent data loss)
+    Resolve a persistent directory for data storage.
+
+    Priority order:
+    1) DESK_BOOKING_DB_PATH (parent directory)
+    2) DESK_BOOKING_DATA_DIR
+    3) /data (Streamlit Cloud)
+    4) ./data (only if DESK_BOOKING_ALLOW_EPHEMERAL=1)
     """
 
-    env_dir = os.getenv("DESK_BOOKING_DATA_DIR")
+    db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
     allow_ephemeral = os.getenv("DESK_BOOKING_ALLOW_EPHEMERAL") == "1"
 
-    candidates: list[tuple[Path, bool]] = []
+    if db_path_env:
+        db_path = Path(db_path_env).expanduser()
+        if _is_writable_dir(db_path.parent):
+            return db_path.parent, True
+        raise RuntimeError(
+            "DESK_BOOKING_DB_PATH points to an unwritable directory."
+        )
 
-    if env_dir:
-        candidates.append((Path(env_dir).expanduser(), True))
+    data_dir_env = os.getenv("DESK_BOOKING_DATA_DIR")
+    if data_dir_env:
+        data_dir = Path(data_dir_env).expanduser()
+        if _is_writable_dir(data_dir):
+            return data_dir, True
+        raise RuntimeError(
+            "DESK_BOOKING_DATA_DIR is not writable."
+        )
 
-    candidates.append((Path("/data"), True))
+    persistent_candidates = [Path("/data")]
+    for candidate in persistent_candidates:
+        if _is_writable_dir(candidate):
+            return candidate, True
 
     if allow_ephemeral:
-        candidates.append(
-            (Path(__file__).resolve().parent.parent / "data", False)
-        )
-
-    for path, is_persistent in candidates:
-        try:
-            path.mkdir(parents=True, exist_ok=True)
-            test_file = path / ".write_test"
-            test_file.write_text("ok")
-            test_file.unlink()
-            return path, is_persistent
-        except Exception:
-            continue
-
-    if not allow_ephemeral:
-        raise RuntimeError(
-            "No writable persistent data directory available. "
-            "Set DESK_BOOKING_DATA_DIR or mount /data to prevent booking loss."
-        )
+        project_data = Path(__file__).resolve().parent.parent / "data"
+        if _is_writable_dir(project_data):
+            return project_data, False
 
     raise RuntimeError(
-        "No writable data directory available. "
-        "Bookings cannot be safely stored."
+        "No writable persistent data directory available. "
+        "Set DESK_BOOKING_DATA_DIR or DESK_BOOKING_DB_PATH to prevent booking loss."
     )
 
 
 # ===================================================
-# PATH RESOLUTION (SAFE AT IMPORT TIME)
+# PATH RESOLUTION
 # ===================================================
 
 DATA_DIR, DATA_DIR_IS_PERSISTENT = _resolve_data_dir()
 
-db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
-
-if db_path_env:
-    DB_PATH = Path(db_path_env).expanduser()
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+_db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
+if _db_path_env:
+    DB_PATH = Path(_db_path_env).expanduser()
 else:
-    DB_PATH = DATA_DIR / "desk-booking.db"
+    DB_PATH = DATA_DIR / DB_FILENAME
 
-if not DB_PATH.parent.exists():
-    raise RuntimeError(
-        "Database directory does not exist or is not writable."
-    )
-
-DESK_BACKUP_PATH = DATA_DIR / "desks.json"
+DESK_BACKUP_PATH = DATA_DIR / DESK_BACKUP_FILENAME
 
 
 # ===================================================
@@ -86,7 +94,6 @@ def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
 
-    # Durability guarantees
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = FULL")
@@ -95,14 +102,14 @@ def get_conn() -> sqlite3.Connection:
 
 
 # ===================================================
-# DATABASE INITIALISATION
+# DATABASE INITIALIZATION
 # ===================================================
 
 def init_db() -> None:
     conn = get_conn()
-    c = conn.cursor()
+    cursor = conn.cursor()
 
-    c.execute(
+    cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,7 +122,7 @@ def init_db() -> None:
         """
     )
 
-    c.execute(
+    cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS desks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,7 +134,7 @@ def init_db() -> None:
         """
     )
 
-    c.execute(
+    cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS bookings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,7 +151,7 @@ def init_db() -> None:
         """
     )
 
-    c.execute(
+    cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,12 +196,12 @@ def write_desks_backup() -> None:
         json.dumps(
             [
                 {
-                    "name": d["name"],
-                    "location": d["location"],
-                    "is_active": d["is_active"],
-                    "admin_only": d["admin_only"],
+                    "name": desk["name"],
+                    "location": desk["location"],
+                    "is_active": desk["is_active"],
+                    "admin_only": desk["admin_only"],
                 }
-                for d in desks
+                for desk in desks
             ],
             indent=2,
         ),
@@ -203,7 +210,7 @@ def write_desks_backup() -> None:
 
 
 # ===================================================
-# SEED DEFAULT DESKS (SAFE + IDEMPOTENT)
+# SEED DEFAULT DESKS
 # ===================================================
 
 def seed_desks() -> None:
@@ -219,14 +226,14 @@ def seed_desks() -> None:
     )
 
     conn = get_conn()
-    c = conn.cursor()
+    cursor = conn.cursor()
 
-    existing = c.execute("SELECT name FROM desks").fetchall()
+    existing = cursor.execute("SELECT name FROM desks").fetchall()
     existing_names = {row["name"] for row in existing}
 
     for desk in _load_desks_backup():
         if desk["name"] not in existing_names:
-            c.execute(
+            cursor.execute(
                 """
                 INSERT INTO desks (name, location, is_active, admin_only)
                 VALUES (?, ?, ?, ?)
@@ -241,7 +248,7 @@ def seed_desks() -> None:
 
     for desk in default_desks:
         if desk["name"] not in existing_names:
-            c.execute(
+            cursor.execute(
                 """
                 INSERT INTO desks (name, location, is_active, admin_only)
                 VALUES (?, ?, ?, ?)
@@ -264,8 +271,8 @@ def ensure_db() -> None:
     ):
         st.warning(
             "Desk bookings are stored in a local data folder that may not "
-            "persist across restarts. Set DESK_BOOKING_DATA_DIR or mount /data "
-            "for permanent storage."
+            "persist across restarts. Set DESK_BOOKING_DATA_DIR or "
+            "DESK_BOOKING_DB_PATH for permanent storage."
         )
         st.session_state["storage_warning_shown"] = True
 
