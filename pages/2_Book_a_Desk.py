@@ -126,9 +126,6 @@ for row in rows:
 # --------------------------------------------------
 st.subheader("Availability overview")
 
-view_mode = st.radio("View density", ["Compact", "Comfortable"], horizontal=True)
-show_full_day = st.checkbox("Show full day without scrolling", value=True)
-
 grid_rows = []
 for t in slots:
     row = {"Time": time_label(t)}
@@ -148,95 +145,17 @@ cell_style = JsCode(
     """
     function(params) {
         if (params.value === "Available") {
-            return {
-                backgroundColor: "#009fdf",
-                color: "white",
-                fontWeight: "600",
-                textAlign: "center"
-            };
+            return {backgroundColor: "#009fdf", color: "white", fontWeight: "600"};
         }
         if (params.value === "Booked") {
-            return {
-                backgroundColor: "#e0e0e0",
-                color: "#666",
-                textAlign: "center"
-            };
+            return {backgroundColor: "#e0e0e0", color: "#666"};
         }
         if (params.value === "Past") {
-            return {
-                backgroundColor: "#f2f2f2",
-                color: "#999",
-                textAlign: "center"
-            };
+            return {backgroundColor: "#f2f2f2", color: "#999"};
         }
         return {};
     }
     """
-)
-
-value_formatter = JsCode(
-    """
-    function(params) {
-        if (params.value === "Available") {
-            return "";
-        }
-        if (params.value === "Booked") {
-            return "×";
-        }
-        if (params.value === "Past") {
-            return "–";
-        }
-        return params.value;
-    }
-    """
-)
-
-time_cell_style = JsCode(
-    """
-    function(params) {
-        return {
-            backgroundColor: "#ffffff",
-            color: "#222",
-            fontWeight: "600",
-            textAlign: "center"
-        };
-    }
-    """
-)
-
-tooltip_value_getter = JsCode(
-    """
-    function(params) {
-        return params.value;
-    }
-    """
-)
-
-row_height = 28 if view_mode == "Compact" else 36
-header_height = 52 if view_mode == "Compact" else 60
-grid_height = header_height + (row_height * len(slots)) + 6
-
-if not show_full_day:
-    grid_height = 420
-
-st.markdown(
-    """
-    <div style="display:flex; gap:16px; align-items:center; margin:8px 0 16px 0; flex-wrap:wrap;">
-        <div style="display:flex; align-items:center; gap:6px;">
-            <span style="display:inline-block; width:14px; height:14px; background:#009fdf; border-radius:3px;"></span>
-            <span>Available</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px;">
-            <span style="display:inline-block; width:14px; height:14px; background:#e0e0e0; border-radius:3px;"></span>
-            <span>Booked</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px;">
-            <span style="display:inline-block; width:14px; height:14px; background:#f2f2f2; border-radius:3px;"></span>
-            <span>Past</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
 )
 
 grid_builder = GridOptionsBuilder.from_dataframe(grid_df)
@@ -245,46 +164,15 @@ grid_builder.configure_default_column(
     sortable=False,
     filter=False,
     cellStyle=cell_style,
-    valueFormatter=value_formatter,
-    minWidth=160,
-    wrapHeaderText=True,
-    autoHeaderHeight=True,
-    tooltipValueGetter=tooltip_value_getter,
 )
-grid_builder.configure_column(
-    "Time",
-    pinned="left",
-    width=110,
-    minWidth=110,
-    maxWidth=130,
-    cellStyle=time_cell_style,
-    tooltipValueGetter=tooltip_value_getter,
-    valueFormatter=None,
-    headerName="Time",
-)
-for desk_id in DESK_IDS:
-    desk_name = DESK_NAMES[desk_id]
-    grid_builder.configure_column(
-        desk_name,
-        headerName=desk_name,
-        minWidth=160,
-        maxWidth=240,
-        valueFormatter=value_formatter,
-        cellStyle=cell_style,
-        tooltipValueGetter=tooltip_value_getter,
-    )
-grid_builder.configure_grid_options(
-    headerHeight=header_height,
-    rowHeight=row_height,
-    suppressSizeToFit=True,
-)
+grid_builder.configure_column("Time", pinned="left", cellStyle=None)
 grid_options = grid_builder.build()
 
 AgGrid(
     grid_df,
     gridOptions=grid_options,
-    height=grid_height,
-    fit_columns_on_grid_load=False,
+    height=420,
+    fit_columns_on_grid_load=True,
     allow_unsafe_jscode=True,
     theme="material",
 )
