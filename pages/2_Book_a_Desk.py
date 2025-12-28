@@ -6,6 +6,7 @@ from datetime import datetime, date, time, timedelta
 from utils.db import ensure_db, get_conn
 from utils.audit import log_action
 from utils.auth import require_login
+from utils.firestore_client import BookingConflict, create_booking, list_all_bookings
 from st_aggrid import (
     AgGrid,
     DataReturnMode,
@@ -146,27 +147,17 @@ slots = generate_slots(selected_date)
 booked = {desk_id: set() for desk_id in DESK_IDS}
 booked_initials = {desk_id: {} for desk_id in DESK_IDS}
 
-with get_conn() as conn:
-    rows = conn.execute(
-        """
-        SELECT b.desk_id, b.start_time, b.end_time, u.name, u.email
-        FROM bookings b
-        JOIN users u ON u.id = b.user_id
-        WHERE date = ?
-          AND status = 'booked'
-        """,
-        (date_iso,),
-    ).fetchall()
+bookings = list_all_bookings({"booking_date": date_iso, "status": "active"})
 
-for row in rows:
-    s = time.fromisoformat(row["start_time"])
-    e = time.fromisoformat(row["end_time"])
-    initials = user_initials(row["name"], row["email"])
+for booking in bookings:
+    s = time.fromisoformat(booking.start_time)
+    e = time.fromisoformat(booking.end_time)
+    initials = user_initials(booking.user_name, booking.user_email)
     for t in slots:
         if s <= t < e:
-            booked[row["desk_id"]].add(t)
+            booked[booking.desk_id].add(t)
             if initials:
-                booked_initials[row["desk_id"]][t] = initials
+                booked_initials[booking.desk_id][t] = initials
 
 # --------------------------------------------------
 # AVAILABILITY GRID
@@ -443,43 +434,22 @@ if confirm_clicked:
             if any(slot not in available for slot in range_slots):
                 st.error("Selected time range is no longer available.")
             else:
-                with get_conn() as conn:
-                    overlap = conn.execute(
-                        """
-                        SELECT 1
-                        FROM bookings
-                        WHERE desk_id = ?
-                          AND date = ?
-                          AND status = 'booked'
-                          AND NOT (end_time <= ? OR start_time >= ?)
-                        LIMIT 1
-                        """,
-                        (desk_id, date_iso, start_value, end_value),
-                    ).fetchone()
-
-                    if overlap:
-                        st.error("Selected time range is no longer available.")
-                    else:
-                        conn.execute(
-                            """
-                            INSERT INTO bookings (
-                                user_id,
-                                desk_id,
-                                date,
-                                start_time,
-                                end_time,
-                                status,
-                                checked_in
-                            )
-                            VALUES (?, ?, ?, ?, ?, 'booked', 0)
-                            """,
-                            (user_id, desk_id, date_iso, start_value, end_value),
-                        )
-                        conn.commit()
-
-                log_action(
-                    "BOOKING_CREATED",
-                    f"desk_id={desk_id}, date={date_iso}, start={start_value}, end={end_value}",
-                )
-                st.session_state.booking_success = True
-                st.rerun()
+                try:
+                    create_booking(
+                        user_id=user_id,
+                        user_email=st.session_state.user_email,
+                        user_name=st.session_state.user_name,
+                        desk_id=desk_id,
+                        booking_date=date_iso,
+                        start_time=start_value,
+                        end_time=end_value,
+                    )
+                except BookingConflict:
+                    st.error("Selected time range is no longer available.")
+                else:
+                    log_action(
+                        "BOOKING_CREATED",
+                        f"desk_id={desk_id}, date={date_iso}, start={start_value}, end={end_value}",
+                    )
+                    st.session_state.booking_success = True
+                    st.rerun()
