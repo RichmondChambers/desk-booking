@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date, time, timedelta
 
 from utils.db import ensure_db, get_conn
+from utils.audit import log_action
 from utils.auth import require_login
 from st_aggrid import (
     AgGrid,
@@ -86,6 +87,9 @@ can_book = st.session_state.get("can_book", 0)
 if not user_id or not can_book:
     st.error("You do not have permission to book desks.")
     st.stop()
+
+if st.session_state.pop("booking_success", False):
+    st.success("Desk booked")
 
 # --------------------------------------------------
 # DATE PICKER
@@ -378,3 +382,65 @@ else:
             key=f"end_{desk_id}_{date_iso}",
             disabled=not end_options,
         )
+
+can_confirm = start_value != "Select start" and end_value != "Select end"
+
+if st.button("Confirm desk booking", disabled=not can_confirm):
+    if not can_confirm:
+        st.error("Please select a start and end time.")
+    else:
+        start_time = datetime.strptime(start_value, "%H:%M").time()
+        end_time = datetime.strptime(end_value, "%H:%M").time()
+        if start_time >= end_time:
+            st.error("End time must be after start time.")
+        else:
+            range_slots = []
+            current = datetime.combine(selected_date, start_time)
+            end_dt = datetime.combine(selected_date, end_time)
+            while current < end_dt:
+                range_slots.append(current.time())
+                current += timedelta(minutes=STEP)
+
+            if any(slot not in available for slot in range_slots):
+                st.error("Selected time range is no longer available.")
+            else:
+                with get_conn() as conn:
+                    overlap = conn.execute(
+                        """
+                        SELECT 1
+                        FROM bookings
+                        WHERE desk_id = ?
+                          AND date = ?
+                          AND status = 'booked'
+                          AND NOT (end_time <= ? OR start_time >= ?)
+                        LIMIT 1
+                        """,
+                        (desk_id, date_iso, start_value, end_value),
+                    ).fetchone()
+
+                    if overlap:
+                        st.error("Selected time range is no longer available.")
+                    else:
+                        conn.execute(
+                            """
+                            INSERT INTO bookings (
+                                user_id,
+                                desk_id,
+                                date,
+                                start_time,
+                                end_time,
+                                status,
+                                checked_in
+                            )
+                            VALUES (?, ?, ?, ?, ?, 'booked', 0)
+                            """,
+                            (user_id, desk_id, date_iso, start_value, end_value),
+                        )
+                        conn.commit()
+
+                log_action(
+                    "BOOKING_CREATED",
+                    f"desk_id={desk_id}, date={date_iso}, start={start_value}, end={end_value}",
+                )
+                st.session_state.booking_success = True
+                st.rerun()
