@@ -317,25 +317,46 @@ if grid_return and grid_return.get("colId") not in (None, "Time"):
 st.subheader("Select time range per desk")
 st.caption("Pick a start time first, then choose an end time from the contiguous availability.")
 
-for desk_id in DESK_IDS:
-    st.markdown(f"### {DESK_NAMES[desk_id]}")
+desk_col, start_col, end_col = st.columns(3)
 
-    available = [
-        t for t in slots
-        if t not in booked[desk_id]
-        and not is_past_slot(selected_date, t, now)
-    ]
-
-    if not available:
-        st.info("No available slots.")
-        continue
-
-    labels = [time_label(t) for t in available]
-    start_value = st.selectbox(
-        "Start time",
-        ["Select start"] + labels,
-        key=f"start_{desk_id}_{date_iso}",
+with desk_col:
+    desk_id = st.selectbox(
+        "Desk",
+        DESK_IDS,
+        format_func=lambda desk: DESK_NAMES[desk],
+        key=f"desk_{date_iso}",
     )
+
+available = [
+    t for t in slots
+    if t not in booked[desk_id]
+    and not is_past_slot(selected_date, t, now)
+]
+
+if not available:
+    with start_col:
+        st.selectbox(
+            "Start time",
+            ["No available slots"],
+            disabled=True,
+            key=f"start_{desk_id}_{date_iso}",
+        )
+    with end_col:
+        st.selectbox(
+            "End time",
+            ["No available slots"],
+            disabled=True,
+            key=f"end_{desk_id}_{date_iso}",
+        )
+    st.info("No available slots.")
+else:
+    labels = [time_label(t) for t in available]
+    with start_col:
+        start_value = st.selectbox(
+            "Start time",
+            ["Select start"] + labels,
+            key=f"start_{desk_id}_{date_iso}",
+        )
 
     if start_value != "Select start":
         start_time = datetime.strptime(start_value, "%H:%M").time()
@@ -350,11 +371,10 @@ for desk_id in DESK_IDS:
     else:
         end_options = []
 
-    end_value = st.selectbox(
-        "End time",
-        ["Select end"] + end_options,
-        key=f"end_{desk_id}_{date_iso}",
-        disabled=not end_options,
-    )
-
-    st.divider()
+    with end_col:
+        end_value = st.selectbox(
+            "End time",
+            ["Select end"] + end_options,
+            key=f"end_{desk_id}_{date_iso}",
+            disabled=not end_options,
+        )
