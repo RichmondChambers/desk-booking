@@ -10,7 +10,7 @@ import streamlit as st
 # RESOLVE A GUARANTEED-PERSISTENT DATA DIRECTORY
 # ===================================================
 
-def _resolve_data_dir() -> Path:
+def _resolve_data_dir() -> tuple[Path, bool]:
     """
     Priority:
     1. Explicit DESK_BOOKING_DATA_DIR (recommended for production)
@@ -29,13 +29,13 @@ def _resolve_data_dir() -> Path:
     if allow_ephemeral:
         candidates.append(Path(__file__).resolve().parent.parent / "data")
 
-    for path in candidates:
+    for path, is_persistent in candidates:
         try:
             path.mkdir(parents=True, exist_ok=True)
             test_file = path / ".write_test"
             test_file.write_text("ok")
             test_file.unlink()
-            return path
+            return path, is_persistent
         except Exception:
             continue
 
@@ -239,5 +239,14 @@ def seed_desks() -> None:
 # ===================================================
 
 def ensure_db() -> None:
+    if not DATA_DIR_IS_PERSISTENT and not st.session_state.get(
+        "storage_warning_shown", False
+    ):
+        st.warning(
+            "Desk bookings are stored in a local data folder that may not "
+            "persist across restarts. Set DESK_BOOKING_DATA_DIR or mount /data "
+            "for permanent storage."
+        )
+        st.session_state["storage_warning_shown"] = True
     init_db()
     seed_desks()
