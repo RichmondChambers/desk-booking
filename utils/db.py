@@ -72,21 +72,21 @@ def _resolve_db_path() -> Path:
     if secret_path:
         return Path(secret_path)
 
+    try:
+        PERSISTENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if PERSISTENT_DATA_DIR.is_dir():
+            persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
+            if DEFAULT_DB_PATH.exists() and not persistent_db.exists():
+                persistent_db.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(DEFAULT_DB_PATH, persistent_db)
+            return persistent_db
+    except OSError:
+        pass
+
     fallback_db = Path.home() / ".desk-booking" / "data.db"
-    persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
-
-    fallback_count = _booking_count(fallback_db) if fallback_db.exists() else 0
-    persistent_count = _booking_count(persistent_db) if persistent_db.exists() else 0
-
-    if not fallback_db.exists():
-        seed_db = _select_seed_db([persistent_db, DEFAULT_DB_PATH])
-        if seed_db:
-            fallback_db.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(seed_db, fallback_db)
-    elif fallback_count == 0 and persistent_count > 0:
+    if DEFAULT_DB_PATH.exists() and not fallback_db.exists():
         fallback_db.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(persistent_db, fallback_db)
-
+        shutil.copy2(DEFAULT_DB_PATH, fallback_db)
     return fallback_db
 
 
