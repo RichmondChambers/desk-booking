@@ -43,7 +43,6 @@ def time_label(t: time) -> str:
 # PAGE SETUP
 # --------------------------------------------------
 st.set_page_config(page_title="Book a Desk", layout="wide")
-apply_lato_font()
 st.title("Book a Desk")
 
 # --------------------------------------------------
