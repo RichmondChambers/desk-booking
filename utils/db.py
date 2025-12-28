@@ -29,6 +29,40 @@ def _secret_db_path() -> str | None:
     return None
 
 
+def _booking_count(db_path: Path) -> int:
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        table = conn.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type='table' AND name='bookings'
+            """
+        ).fetchone()
+        if not table:
+            return 0
+        count = conn.execute("SELECT COUNT(*) FROM bookings").fetchone()[0]
+        return int(count)
+    except sqlite3.Error:
+        return 0
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _select_seed_db(candidates: list[Path]) -> Path | None:
+    existing = [path for path in candidates if path.exists()]
+    if not existing:
+        return None
+    scored = [
+        (path, _booking_count(path), path.stat().st_mtime)
+        for path in existing
+    ]
+    scored.sort(key=lambda entry: (entry[1], entry[2]), reverse=True)
+    return scored[0][0]
+
+
 def _resolve_db_path() -> Path:
     env_path = os.getenv("DESK_BOOKING_DB_PATH")
     if env_path:
@@ -38,17 +72,25 @@ def _resolve_db_path() -> Path:
     if secret_path:
         return Path(secret_path)
 
-    if PERSISTENT_DATA_DIR.is_dir():
-        persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
-        if DEFAULT_DB_PATH.exists() and not persistent_db.exists():
-            persistent_db.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(DEFAULT_DB_PATH, persistent_db)
-        return persistent_db
+    fallback_db = Path.home() / ".desk-booking" / "data.db"
 
-    if DEFAULT_DB_PATH.exists():
-        return DEFAULT_DB_PATH
+    try:
+        PERSISTENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if PERSISTENT_DATA_DIR.is_dir():
+            persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
+            if not persistent_db.exists():
+                seed_db = _select_seed_db([fallback_db, DEFAULT_DB_PATH])
+                if seed_db:
+                    persistent_db.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(seed_db, persistent_db)
+            return persistent_db
+    except OSError:
+        pass
 
-    return Path.home() / ".desk-booking" / "data.db"
+    if DEFAULT_DB_PATH.exists() and not fallback_db.exists():
+        fallback_db.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(DEFAULT_DB_PATH, fallback_db)
+    return fallback_db
 
 
 DB_PATH = _resolve_db_path().expanduser()
