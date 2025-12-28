@@ -30,72 +30,7 @@ def generate_slots(selected_date: date):
         slots.append(cur.time())
         cur += timedelta(minutes=STEP)
 
-    return slots
-
-
-def is_past_slot(selected_date: date, t: time, now: datetime) -> bool:
-    return selected_date == date.today() and datetime.combine(selected_date, t) < now
-
-
-def time_label(t: time) -> str:
-    return t.strftime("%H:%M")
-
-
-# --------------------------------------------------
-# PAGE SETUP
-# --------------------------------------------------
-st.set_page_config(page_title="Book a Desk", layout="wide")
-st.title("Book a Desk")
-
-# --------------------------------------------------
-# AUTH & DB
-# --------------------------------------------------
-require_login()
-ensure_db()
-
-user_id = st.session_state.get("user_id")
-can_book = st.session_state.get("can_book", 0)
-
-if not user_id or not can_book:
-    st.error("You do not have permission to book desks.")
-    st.stop()
-
-# --------------------------------------------------
-# DATE PICKER
-# --------------------------------------------------
-selected_date = st.date_input("Select date", format="DD/MM/YYYY")
-
-if selected_date.weekday() >= 5:
-    st.warning("Desk booking is not available at weekends.")
-    st.stop()
-
-date_iso = selected_date.strftime("%Y-%m-%d")
-now = datetime.now()
-
-# --------------------------------------------------
-# LOAD DESKS
-# --------------------------------------------------
-with get_conn() as conn:
-    desks = conn.execute(
-        """
-        SELECT id, name
-        FROM desks
-        WHERE is_active = 1
-        ORDER BY id
-        """
-    ).fetchall()
-
-if not desks:
-    st.error("No desks available.")
-    st.stop()
-
-DESK_IDS = [row["id"] for row in desks]
-DESK_NAMES = {row["id"]: row["name"] for row in desks}
-
-# --------------------------------------------------
-# TIME SLOTS
-# --------------------------------------------------
-slots = generate_slots(selected_date)
+@@ -97,50 +99,237 @@ slots = generate_slots(selected_date)
 
 # --------------------------------------------------
 # LOAD EXISTING BOOKINGS
@@ -126,8 +61,41 @@ for row in rows:
 # --------------------------------------------------
 st.subheader("Availability overview")
 
+view_mode = st.radio("View density", ["Compact", "Comfortable"], horizontal=True)
+show_full_day = st.checkbox("Show full day without scrolling", value=True)
+
+legend_col, filter_col = st.columns([2, 3])
+with legend_col:
+    st.markdown(
+        """
+        <div style="display:flex; gap:16px; align-items:center; margin:8px 0 8px 0; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="display:inline-block; width:14px; height:14px; background:#009fdf; border-radius:3px;"></span>
+                <span>Available</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="display:inline-block; width:14px; height:14px; background:#e0e0e0; border-radius:3px;"></span>
+                <span>Booked</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="display:inline-block; width:14px; height:14px; background:#f2f2f2; border-radius:3px;"></span>
+                <span>Past</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with filter_col:
+    hide_past = st.checkbox("Hide past times", value=False)
+    show_available_only = st.checkbox("Show only desks with availability", value=False)
+
+filtered_slots = [
+    t for t in slots if not (hide_past and is_past_slot(selected_date, t, now))
+]
+
 grid_rows = []
-for t in slots:
+for t in filtered_slots:
     row = {"Time": time_label(t)}
     for desk_id in DESK_IDS:
         if is_past_slot(selected_date, t, now):
@@ -141,22 +109,88 @@ for t in slots:
 
 grid_df = pd.DataFrame(grid_rows)
 
+if show_available_only and not grid_df.empty:
+    available_desks = [
+        desk_name
+        for desk_name in DESK_NAMES.values()
+        if (grid_df[desk_name] == "Available").any()
+    ]
+    grid_df = grid_df[["Time"] + available_desks]
+
 cell_style = JsCode(
     """
     function(params) {
         if (params.value === "Available") {
-            return {backgroundColor: "#009fdf", color: "white", fontWeight: "600"};
+            return {
+                backgroundColor: "#009fdf",
+                color: "white",
+                fontWeight: "600",
+                textAlign: "center"
+            };
         }
         if (params.value === "Booked") {
-            return {backgroundColor: "#e0e0e0", color: "#666"};
+            return {
+                backgroundColor: "#e0e0e0",
+                color: "#666",
+                textAlign: "center"
+            };
         }
         if (params.value === "Past") {
-            return {backgroundColor: "#f2f2f2", color: "#999"};
+            return {
+                backgroundColor: "#f2f2f2",
+                color: "#999",
+                textAlign: "center"
+            };
         }
         return {};
     }
     """
 )
+
+value_formatter = JsCode(
+    """
+    function(params) {
+        if (params.value === "Available") {
+            return "";
+        }
+        if (params.value === "Booked") {
+            return "×";
+        }
+        if (params.value === "Past") {
+            return "–";
+        }
+        return params.value;
+    }
+    """
+)
+
+time_cell_style = JsCode(
+    """
+    function(params) {
+        return {
+            backgroundColor: "#ffffff",
+            color: "#222",
+            fontWeight: "600",
+            textAlign: "center"
+        };
+    }
+    """
+)
+
+tooltip_value_getter = JsCode(
+    """
+    function(params) {
+        return params.value;
+    }
+    """
+)
+
+row_height = 28 if view_mode == "Compact" else 36
+header_height = 52 if view_mode == "Compact" else 60
+grid_height = header_height + (row_height * len(filtered_slots)) + 6
+
+if not show_full_day:
+    grid_height = 420
 
 grid_builder = GridOptionsBuilder.from_dataframe(grid_df)
 grid_builder.configure_default_column(
@@ -164,15 +198,47 @@ grid_builder.configure_default_column(
     sortable=False,
     filter=False,
     cellStyle=cell_style,
+    valueFormatter=value_formatter,
+    minWidth=160,
+    wrapHeaderText=True,
+    autoHeaderHeight=True,
+    tooltipValueGetter=tooltip_value_getter,
 )
-grid_builder.configure_column("Time", pinned="left", cellStyle=None)
+grid_builder.configure_column(
+    "Time",
+    pinned="left",
+    width=140,
+    minWidth=140,
+    maxWidth=160,
+    cellStyle=time_cell_style,
+    tooltipValueGetter=tooltip_value_getter,
+    valueFormatter=None,
+    headerName="Time",
+)
+for desk_name in grid_df.columns:
+    if desk_name == "Time":
+        continue
+    grid_builder.configure_column(
+        desk_name,
+        headerName=desk_name,
+        minWidth=160,
+        maxWidth=240,
+        valueFormatter=value_formatter,
+        cellStyle=cell_style,
+        tooltipValueGetter=tooltip_value_getter,
+    )
+grid_builder.configure_grid_options(
+    headerHeight=header_height,
+    rowHeight=row_height,
+    suppressSizeToFit=True,
+)
 grid_options = grid_builder.build()
 
 AgGrid(
     grid_df,
     gridOptions=grid_options,
-    height=420,
-    fit_columns_on_grid_load=True,
+    height=grid_height,
+    fit_columns_on_grid_load=False,
     allow_unsafe_jscode=True,
     theme="material",
 )
@@ -202,88 +268,56 @@ for desk_id in DESK_IDS:
     start_label = st.selectbox(
         "Start time",
         ["—"] + labels,
-        key=f"start_{desk_id}_{date_iso}",
-    )
+requirements.txt
++2
+-0
 
-    end_label = st.selectbox(
-        "End time",
-        ["—"] + labels,
-        key=f"end_{desk_id}_{date_iso}",
-    )
+streamlit
+streamlit-aggrid
+pandas
+qrcode[pil]
+google-auth
+google-auth-oauthlib
+requests
+utils/db.py
++2
+-0
 
-    if start_label != "—" and end_label != "—":
-        start = time.fromisoformat(start_label)
-        end = time.fromisoformat(end_label)
+import json
+import os
+import sqlite3
+from pathlib import Path
 
-        if end <= start:
-            st.error("End time must be after start time.")
-        else:
-            # Ensure the entire interval is available (not just endpoints)
-            interval_slots = []
-            cur_dt = datetime.combine(selected_date, start)
-            end_dt = datetime.combine(selected_date, end)
-            while cur_dt < end_dt:
-                interval_slots.append(cur_dt.time())
-                cur_dt += timedelta(minutes=STEP)
+import streamlit as st
 
-            if any(
-                (t in booked[desk_id]) or is_past_slot(selected_date, t, now)
-                for t in interval_slots
-            ):
-                st.error("Selected range includes unavailable time slots.")
-            else:
-                selections[desk_id] = (start, end)
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
+PERSISTENT_DATA_DIR = Path("/data")
 
-# --------------------------------------------------
-# CONFIRM BOOKING
-# --------------------------------------------------
-st.divider()
-st.subheader("Confirm booking")
+os.environ.setdefault("DESK_BOOKING_DB_PATH", str(DEFAULT_DB_PATH))
 
-if st.button("Confirm booking", type="primary", use_container_width=True):
 
-    if not selections:
-        st.warning("Please select at least one booking.")
-        st.stop()
+# ---------------------------------------------------
+# DATABASE PATH RESOLUTION
+# ---------------------------------------------------
+def _secret_db_path() -> str | None:
+    if not hasattr(st, "secrets"):
+        return None
 
-    # Defensive: reject past selections on submit
-    for desk_id, (start, end) in selections.items():
-        if is_past_slot(selected_date, start, now):
-            st.error("Cannot book time slots in the past.")
-            st.stop()
+    db_path = st.secrets.get("db_path")
+    if db_path:
+        return db_path
 
-    with get_conn() as conn:
-        for desk_id, (start, end) in selections.items():
+    db_config = st.secrets.get("database")
+    if isinstance(db_config, dict):
+        return db_config.get("path")
 
-            # Application-level overlap check (still required for friendly messaging)
-            conflict = conn.execute(
-                """
-                SELECT 1
-                FROM bookings
-                WHERE desk_id = ?
-                  AND date = ?
-                  AND status = 'booked'
-                  AND start_time < ?
-                  AND end_time > ?
-                """,
-                (desk_id, date_iso, end.isoformat(), start.isoformat()),
-            ).fetchone()
+    return None
 
-            if conflict:
-                st.error(f"{DESK_NAMES[desk_id]} has a conflicting booking.")
-                st.stop()
 
-            # Insert
-            conn.execute(
-                """
-                INSERT INTO bookings
-                (user_id, desk_id, date, start_time, end_time, status, checked_in)
-                VALUES (?, ?, ?, ?, ?, 'booked', 0)
-                """,
-                (user_id, desk_id, date_iso, start.isoformat(), end.isoformat()),
-            )
+def _resolve_db_path() -> Path:
+    env_path = os.getenv("DESK_BOOKING_DB_PATH")
+    if env_path:
+        return Path(env_path)
 
-        conn.commit()
-
-    st.success("Booking confirmed.")
-    st.rerun()
+    secret_path = _secret_db_path()
