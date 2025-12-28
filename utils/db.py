@@ -1,119 +1,115 @@
 import json
-import os
-import shutil
 import sqlite3
 from pathlib import Path
 
 import streamlit as st
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
-PERSISTENT_DATA_DIR = Path("/data")
 
+# ===================================================
+# SINGLE, IMMUTABLE DATABASE LOCATION (PERSISTENT)
+# ===================================================
 
-# ---------------------------------------------------
-# DATABASE PATH RESOLUTION
-# ---------------------------------------------------
-def _secret_db_path() -> str | None:
-    if not hasattr(st, "secrets"):
-        return None
+DB_PATH = Path("/data/desk-booking.db")
+DESK_BACKUP_PATH = Path("/data/desks.json")
 
-    db_path = st.secrets.get("db_path")
-    if db_path:
-        return db_path
-
-    db_config = st.secrets.get("database")
-    if isinstance(db_config, dict):
-        return db_config.get("path")
-
-    return None
-
-
-def _booking_count(db_path: Path) -> int:
-    conn = None
-    try:
-        conn = sqlite3.connect(db_path)
-        table = conn.execute(
-            """
-            SELECT name
-            FROM sqlite_master
-            WHERE type='table' AND name='bookings'
-            """
-        ).fetchone()
-        if not table:
-            return 0
-        count = conn.execute("SELECT COUNT(*) FROM bookings").fetchone()[0]
-        return int(count)
-    except sqlite3.Error:
-        return 0
-    finally:
-        if conn is not None:
-            conn.close()
-
-
-def _select_seed_db(candidates: list[Path]) -> Path | None:
-    existing = [path for path in candidates if path.exists()]
-    if not existing:
-        return None
-    scored = [
-        (path, _booking_count(path), path.stat().st_mtime)
-        for path in existing
-    ]
-    scored.sort(key=lambda entry: (entry[1], entry[2]), reverse=True)
-    return scored[0][0]
-
-
-def _resolve_db_path() -> Path:
-    env_path = os.getenv("DESK_BOOKING_DB_PATH")
-    if env_path:
-        return Path(env_path)
-
-    secret_path = _secret_db_path()
-    if secret_path:
-        return Path(secret_path)
-
-    try:
-        PERSISTENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-        if PERSISTENT_DATA_DIR.is_dir():
-            persistent_db = PERSISTENT_DATA_DIR / "desk-booking.db"
-            if DEFAULT_DB_PATH.exists() and not persistent_db.exists():
-                persistent_db.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(DEFAULT_DB_PATH, persistent_db)
-            return persistent_db
-    except OSError:
-        pass
-
-    fallback_db = Path.home() / ".desk-booking" / "data.db"
-    if DEFAULT_DB_PATH.exists() and not fallback_db.exists():
-        fallback_db.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(DEFAULT_DB_PATH, fallback_db)
-    return fallback_db
-
-
-DB_PATH = _resolve_db_path().expanduser()
-DESK_BACKUP_PATH = Path(
-    os.getenv(
-        "DESK_BOOKING_DESK_BACKUP_PATH",
-        DB_PATH.parent / "desks.json",
-    )
-).expanduser()
+# Fail fast if persistence is unavailable
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+if not DB_PATH.parent.is_dir():
+    raise RuntimeError("Persistent /data volume is not available")
+
 DESK_BACKUP_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
-# ---------------------------------------------------
-# CONNECTION HANDLING
-# ---------------------------------------------------
+# ===================================================
+# DATABASE CONNECTION
+# ===================================================
+
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+
+    # Critical durability settings
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = FULL")
+
     return conn
 
 
-# ---------------------------------------------------
-# BACKUP HANDLING
-# ---------------------------------------------------
+# ===================================================
+# DATABASE INITIALISATION
+# ===================================================
+
+def init_db() -> None:
+    conn = get_conn()
+    c = conn.cursor()
+
+    # USERS
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            email TEXT UNIQUE,
+            role TEXT,
+            can_book INTEGER,
+            is_active INTEGER DEFAULT 1
+        )
+        """
+    )
+
+    # DESKS
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS desks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            location TEXT,
+            is_active INTEGER DEFAULT 1,
+            admin_only INTEGER DEFAULT 0
+        )
+        """
+    )
+
+    # BOOKINGS (PERSISTENT & SAFE)
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            desk_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            status TEXT NOT NULL,
+            checked_in INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (desk_id) REFERENCES desks(id)
+        )
+        """
+    )
+
+    # AUDIT LOG
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT,
+            action TEXT,
+            details TEXT,
+            timestamp TEXT
+        )
+        """
+    )
+
+    conn.commit()
+    conn.close()
+
+
+# ===================================================
+# DESK BACKUP HANDLING
+# ===================================================
+
 def _load_desks_backup() -> list[dict]:
     if not DESK_BACKUP_PATH.exists():
         return []
@@ -151,83 +147,11 @@ def write_desks_backup() -> None:
     )
 
 
-# ---------------------------------------------------
-# DATABASE INITIALISATION
-# ---------------------------------------------------
-def init_db() -> None:
-    conn = get_conn()
-    c = conn.cursor()
+# ===================================================
+# SEED DEFAULT DESKS (SAFE & IDEMPOTENT)
+# ===================================================
 
-    # USERS
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            email TEXT UNIQUE,
-            role TEXT,
-            can_book INTEGER,
-            is_active INTEGER DEFAULT 1
-        )
-        """
-    )
-
-    # DESKS
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS desks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            location TEXT,
-            is_active INTEGER DEFAULT 1,
-            admin_only INTEGER DEFAULT 0
-        )
-        """
-    )
-
-    # BOOKINGS (CRITICAL)
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS bookings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            desk_id INTEGER NOT NULL,
-            date TEXT NOT NULL,
-            start_time TEXT NOT NULL,
-            end_time TEXT NOT NULL,
-            status TEXT NOT NULL,
-            checked_in INTEGER DEFAULT 0,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (desk_id) REFERENCES desks(id)
-        )
-        """
-    )
-
-    # AUDIT LOG
-    c.execute(
-        """
-        CREATE TABLE IF NOT EXISTS audit_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT,
-            action TEXT,
-            details TEXT,
-            timestamp TEXT
-        )
-        """
-    )
-
-    conn.commit()
-    conn.close()
-
-
-# ---------------------------------------------------
-# SEED DEFAULT DESKS
-# ---------------------------------------------------
 def seed_desks() -> None:
-    """
-    Insert default desks if none exist.
-    Safe to run multiple times.
-    """
     default_desks = [
         {"name": f"Desk {i}", "location": "Office", "admin_only": 0}
         for i in range(1, 13)
@@ -239,86 +163,45 @@ def seed_desks() -> None:
     conn = get_conn()
     c = conn.cursor()
 
-    existing_desks = c.execute(
-        """
-        SELECT id, name
-        FROM desks
-        """
-    ).fetchall()
-    existing_by_name = {row["name"]: row["id"] for row in existing_desks}
+    existing = c.execute("SELECT name FROM desks").fetchall()
+    existing_names = {row["name"] for row in existing}
+
     backup_desks = _load_desks_backup()
-    changed = False
 
-    if backup_desks:
-        for desk in backup_desks:
-            name = desk.get("name")
-            if not name:
-                continue
-
-            location = desk.get("location")
-            is_active = desk.get("is_active", 1)
-            admin_only = desk.get("admin_only", 0)
-            existing_id = existing_by_name.get(name)
-
-            if existing_id is None:
-                c.execute(
-                    """
-                    INSERT INTO desks (name, location, is_active, admin_only)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (name, location, is_active, admin_only),
-                )
-            else:
-                c.execute(
-                    """
-                    UPDATE desks
-                    SET location = ?, is_active = ?, admin_only = ?
-                    WHERE id = ?
-                    """,
-                    (location, is_active, admin_only, existing_id),
-                )
-
-        conn.commit()
-
-    for desk in default_desks:
-        name = desk["name"]
-        location = desk["location"]
-        admin_only = desk["admin_only"]
-        is_active = 1
-        existing_id = existing_by_name.get(name)
-
-        if existing_id is None:
+    for desk in backup_desks:
+        if desk["name"] not in existing_names:
             c.execute(
                 """
                 INSERT INTO desks (name, location, is_active, admin_only)
                 VALUES (?, ?, ?, ?)
                 """,
-                (name, location, is_active, admin_only),
+                (
+                    desk["name"],
+                    desk.get("location"),
+                    desk.get("is_active", 1),
+                    desk.get("admin_only", 0),
+                ),
             )
-            existing_by_name[name] = c.lastrowid
-            changed = True
-        else:
+
+    for desk in default_desks:
+        if desk["name"] not in existing_names:
             c.execute(
                 """
-                UPDATE desks
-                SET location = ?, is_active = ?, admin_only = ?
-                WHERE id = ?
+                INSERT INTO desks (name, location, is_active, admin_only)
+                VALUES (?, ?, ?, ?)
                 """,
-                (location, is_active, admin_only, existing_id),
+                (desk["name"], desk["location"], 1, desk["admin_only"]),
             )
-            changed = True
 
-    if not existing_desks:
-        changed = True
-
-    if changed:
-        conn.commit()
-        conn.close()
-        write_desks_backup()
-        return
-
+    conn.commit()
     conn.close()
 
+    write_desks_backup()
+
+
+# ===================================================
+# ENTRYPOINT
+# ===================================================
 
 def ensure_db() -> None:
     init_db()
