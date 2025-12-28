@@ -4,7 +4,13 @@ from datetime import datetime, date, time, timedelta
 
 from utils.db import ensure_db, get_conn
 from utils.auth import require_login
-from st_aggrid import AgGrid, GridOptionsBuilder, JsCode
+from st_aggrid import (
+    AgGrid,
+    DataReturnMode,
+    GridOptionsBuilder,
+    GridUpdateMode,
+    JsCode,
+)
 
 # --------------------------------------------------
 # CONFIG
@@ -153,6 +159,7 @@ for row in rows:
 # AVAILABILITY GRID
 # --------------------------------------------------
 st.subheader("Availability overview")
+st.caption("Tip: click an available cell to prefill the selection below.")
 
 view_mode = st.radio("View density", ["Compact", "Comfortable"], horizontal=True)
 show_full_day = st.checkbox("Show full day without scrolling", value=True)
@@ -244,16 +251,96 @@ grid_builder.configure_grid_options(
     headerHeight=header_height,
     rowHeight=row_height,
     suppressSizeToFit=True,
+    rowSelection="single",
+    suppressRowClickSelection=True,
+    onCellClicked=JsCode(
+        """
+        function(event) {
+            if (event.node) {
+                event.node.setSelected(true, true);
+            }
+        }
+        """
+    ),
 )
 
-AgGrid(
+grid_return = AgGrid(
     grid_df,
     gridOptions=grid_builder.build(),
     height=grid_height,
     fit_columns_on_grid_load=False,
     allow_unsafe_jscode=True,
     theme="material",
+    update_mode=GridUpdateMode.SELECTION_CHANGED,
+    data_return_mode=DataReturnMode.CUSTOM,
+    custom_jscode_for_grid_return=JsCode(
+        """
+        function({eventData}) {
+            const api = eventData.api;
+            if (!api) return {};
+            const focused = api.getFocusedCell();
+            if (!focused) return {};
+            const rowNode = api.getDisplayedRowAtIndex(focused.rowIndex);
+            if (!rowNode) return {};
+            return {
+                colId: focused.column.getColId(),
+                rowData: rowNode.data,
+                value: rowNode.data[focused.column.getColId()],
+            };
+        }
+        """
+    ),
 )
+
+# --------------------------------------------------
+# GRID CLICK PREFILL
+# --------------------------------------------------
+if grid_return and isinstance(grid_return, dict):
+    selected_column = grid_return.get("colId")
+    selected_row = grid_return.get("rowData") or {}
+    selected_value = grid_return.get("value")
+
+    if (
+        selected_column
+        and selected_column != "Time"
+        and selected_value == "Available"
+        and "Time" in selected_row
+    ):
+        desk_id = next(
+            (desk for desk, name in DESK_NAMES.items() if name == selected_column),
+            None,
+        )
+        if desk_id is not None:
+            selected_time = datetime.strptime(selected_row["Time"], "%H:%M").time()
+            available = [
+                t
+                for t in slots
+                if t not in booked[desk_id]
+                and not is_past_slot(selected_date, t, now)
+            ]
+            if selected_time in available:
+                start_key = f"start_{desk_id}_{date_iso}"
+                end_key = f"end_{desk_id}_{date_iso}"
+                st.session_state[start_key] = time_label(selected_time)
+
+                start_index = available.index(selected_time)
+                contiguous_slots = [selected_time]
+                for next_time in available[start_index + 1:]:
+                    expected_next = (
+                        datetime.combine(selected_date, contiguous_slots[-1])
+                        + timedelta(minutes=STEP)
+                    ).time()
+                    if next_time == expected_next:
+                        contiguous_slots.append(next_time)
+                    else:
+                        break
+
+                if contiguous_slots:
+                    end_time = (
+                        datetime.combine(selected_date, contiguous_slots[0])
+                        + timedelta(minutes=STEP)
+                    ).time()
+                    st.session_state[end_key] = time_label(end_time)
 
 # --------------------------------------------------
 # RANGE SELECTION UI (per desk)
