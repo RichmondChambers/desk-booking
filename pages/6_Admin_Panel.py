@@ -4,6 +4,7 @@ import pandas as pd
 from utils.db import ensure_db, get_conn, write_desks_backup
 from utils.auth import require_admin
 from utils.audit import log_action
+from utils.firestore_client import bulk_cancel_by_desk, list_all_bookings, migrate_sqlite_bookings
 from utils.styles import apply_lato_font
 
 st.set_page_config(page_title="Admin Panel", layout="wide")
@@ -228,17 +229,18 @@ for desk_id, name, location, is_active, admin_only in desks:
                     "DELETE_DESK",
                     f"Deleted desk '{name}' and associated bookings",
                 )
-
-                if table_exists("bookings"):
-                    run_db(
-                        "DELETE FROM bookings WHERE desk_id = ?",
-                        (desk_id,),
-                    )
+                cancelled_count = bulk_cancel_by_desk(
+                    desk_id,
+                    cancelled_by=st.session_state.user_email,
+                    reason="Desk removed",
+                )
 
                 run_db("DELETE FROM desks WHERE id = ?", (desk_id,))
                 write_desks_backup()
 
-                st.success(f"Desk '{name}' deleted.")
+                st.success(
+                    f"Desk '{name}' deleted. Cancelled {cancelled_count} bookings."
+                )
                 st.rerun()
 
 # ---------------------------------------------------
@@ -247,43 +249,53 @@ for desk_id, name, location, is_active, admin_only in desks:
 st.divider()
 st.subheader("All Bookings")
 
-if table_exists("bookings"):
-    conn = get_conn()
-    bookings = conn.execute(
-        """
-        SELECT
-            b.id,
-            u.email,
-            d.name AS desk,
-            b.date,
-            b.start_time,
-            b.end_time,
-            b.status,
-            b.checked_in
-        FROM bookings b
-        JOIN users u ON b.user_id = u.id
-        JOIN desks d ON b.desk_id = d.id
-        ORDER BY b.date DESC
-        """
-    ).fetchall()
-    conn.close()
-
+bookings = list_all_bookings()
+if bookings:
+    desk_lookup = {desk[0]: desk[1] for desk in desks}
     df_bookings = pd.DataFrame(
-        bookings,
-        columns=[
-            "ID",
-            "User",
-            "Desk",
-            "Date",
-            "Start",
-            "End",
-            "Status",
-            "Checked In",
-        ],
+        [
+            {
+                "ID": booking.booking_id,
+                "User": booking.user_email,
+                "Desk": desk_lookup.get(booking.desk_id, f"Desk {booking.desk_id}"),
+                "Date": booking.booking_date,
+                "Start": booking.start_time,
+                "End": booking.end_time,
+                "Status": booking.status,
+                "Checked In": booking.checked_in,
+            }
+            for booking in bookings
+        ]
     )
     st.dataframe(df_bookings, use_container_width=True)
 else:
-    st.info("No bookings table present.")
+    st.info("No bookings in Firestore.")
+
+# ---------------------------------------------------
+# MIGRATION
+# ---------------------------------------------------
+with st.expander("Migrate existing SQLite bookings to Firestore"):
+    st.caption(
+        "Run once to copy existing bookings from the local SQLite database. "
+        "This does not delete local data."
+    )
+    if st.button("Run migration"):
+        conn = get_conn()
+        rows = conn.execute(
+            """
+            SELECT b.id, b.user_id, b.desk_id, b.date, b.start_time, b.end_time,
+                   b.status, b.checked_in, u.email, u.name
+            FROM bookings b
+            JOIN users u ON u.id = b.user_id
+            """
+        ).fetchall()
+        conn.close()
+
+        stats = migrate_sqlite_bookings(rows)
+        st.success(
+            f"Migrated bookings. Inserted {stats['inserted']}, "
+            f"skipped {stats['skipped']} existing records."
+        )
 
 # ---------------------------------------------------
 # AUDIT LOG

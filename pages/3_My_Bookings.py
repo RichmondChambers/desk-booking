@@ -1,8 +1,9 @@
 import streamlit as st
 from datetime import date
-from utils.db import ensure_db, get_conn
+from utils.db import ensure_db
 from utils.audit import log_action
 from utils.dates import uk_date
+from utils.firestore_client import cancel_booking, list_user_bookings
 from utils.styles import apply_lato_font
 
 # ---------------------------------------------------
@@ -29,44 +30,26 @@ user_id = st.session_state.user_id
 today_str = date.today().strftime("%Y-%m-%d")
 
 # ---------------------------------------------------
-# DB HELPER
-# ---------------------------------------------------
-def run_db(query, params=()):
-    conn = get_conn()
-    conn.execute(query, params)
-    conn.commit()
-    conn.close()
-
-# ---------------------------------------------------
 # FETCH BOOKINGS
 # ---------------------------------------------------
-conn = get_conn()
-
-upcoming = conn.execute(
-    """
-    SELECT id, desk_id, date, start_time, end_time, status, checked_in
-    FROM bookings
-    WHERE user_id = ?
-      AND date >= ?
-      AND status = 'booked'
-    ORDER BY date, start_time
-    """,
-    (user_id, today_str),
-).fetchall()
-
-past = conn.execute(
-    """
-    SELECT id, desk_id, date, start_time, end_time, status, checked_in
-    FROM bookings
-    WHERE user_id = ?
-      AND date < ?
-      AND status IN ('booked', 'cancelled')
-    ORDER BY date DESC, start_time DESC
-    """,
-    (user_id, today_str),
-).fetchall()
-
-conn.close()
+bookings = list_user_bookings(user_id, include_cancelled=True)
+upcoming = sorted(
+    [
+        booking
+        for booking in bookings
+        if booking.booking_date >= today_str and booking.status == "active"
+    ],
+    key=lambda booking: (booking.booking_date, booking.start_time),
+)
+past = sorted(
+    [
+        booking
+        for booking in bookings
+        if booking.booking_date < today_str or booking.status != "active"
+    ],
+    key=lambda booking: (booking.booking_date, booking.start_time),
+    reverse=True,
+)
 
 # ---------------------------------------------------
 # SHOW UPCOMING BOOKINGS
@@ -76,31 +59,27 @@ st.subheader("Upcoming Bookings")
 if not upcoming:
     st.info("You have no upcoming bookings.")
 else:
-    for booking_id, desk_id, b_date, start, end, status, checked_in in upcoming:
+    for booking in upcoming:
         with st.container():
             st.markdown(
                 f"""
-                **Desk {desk_id}**  
-                • Date: **{uk_date(b_date)}**  
-                • Time: **{start}–{end}**  
-                • Status: **{status}**  
-                • Checked in: **{'Yes' if checked_in else 'No'}**
+                **Desk {booking.desk_id}**  
+                • Date: **{uk_date(booking.booking_date)}**  
+                • Time: **{booking.start_time}–{booking.end_time}**  
+                • Status: **{booking.status}**  
+                • Checked in: **{'Yes' if booking.checked_in else 'No'}**
                 """
             )
 
-            if st.button("Cancel Booking", key=f"cancel_{booking_id}"):
-                run_db(
-                    """
-                    UPDATE bookings
-                    SET status='cancelled'
-                    WHERE id=? AND user_id=? AND status='booked'
-                    """,
-                    (booking_id, user_id),
+            if st.button("Cancel Booking", key=f"cancel_{booking.booking_id}"):
+                cancel_booking(
+                    booking.booking_id,
+                    cancelled_by=st.session_state.user_email,
                 )
 
                 log_action(
                     "BOOKING_CANCELLED",
-                    f"booking_id={booking_id}, desk_id={desk_id}",
+                    f"booking_id={booking.booking_id}, desk_id={booking.desk_id}",
                 )
 
                 st.success("Booking cancelled.")
@@ -116,14 +95,14 @@ st.subheader("Past Bookings")
 if not past:
     st.info("You have no past bookings.")
 else:
-    for booking_id, desk_id, b_date, start, end, status, checked_in in past:
+    for booking in past:
         st.markdown(
             f"""
-            **Desk {desk_id}**  
-            • Date: **{uk_date(b_date)}**  
-            • Time: **{start}–{end}**  
-            • Status: **{status}**  
-            • Checked in: **{'Yes' if checked_in else 'No'}**
+            **Desk {booking.desk_id}**  
+            • Date: **{uk_date(booking.booking_date)}**  
+            • Time: **{booking.start_time}–{booking.end_time}**  
+            • Status: **{booking.status}**  
+            • Checked in: **{'Yes' if booking.checked_in else 'No'}**
             """
         )
         st.divider()

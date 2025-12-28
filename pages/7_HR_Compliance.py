@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from utils.auth import require_admin
 from utils.db import ensure_db, get_conn
+from utils.firestore_client import list_all_bookings
 from utils.styles import apply_lato_font
 
 apply_lato_font()
@@ -9,40 +10,59 @@ st.title("HR Compliance Reporting")
 ensure_db()
 require_admin()
 
-conn = get_conn()
-c = conn.cursor()
-
 # No-show report
 st.subheader("No-show Records")
-nos = c.execute("""
-    SELECT b.id, u.name, u.email, b.date, b.start_time, b.end_time
-    FROM bookings b
-    JOIN users u ON u.id = b.user_id
-    WHERE b.status='no_show'
-    ORDER BY date DESC
-""").fetchall()
-
-df_nos = pd.DataFrame(
-    nos,
-    columns=["Booking ID", "User", "Email", "Date", "Start", "End"],
-)
-st.dataframe(df_nos)
+no_shows = list_all_bookings({"status": "no_show"})
+if no_shows:
+    df_nos = pd.DataFrame(
+        [
+            {
+                "Booking ID": booking.booking_id,
+                "User": booking.user_name,
+                "Email": booking.user_email,
+                "Date": booking.booking_date,
+                "Start": booking.start_time,
+                "End": booking.end_time,
+            }
+            for booking in no_shows
+        ]
+    )
+    st.dataframe(df_nos)
+else:
+    st.info("No no-show records found.")
 
 # Attendance summary
 st.subheader("Attendance Summary")
-attendance = c.execute("""
-    SELECT u.name, u.email,
-        SUM(CASE WHEN b.checked_in=1 THEN 1 ELSE 0 END) AS attended,
-        SUM(CASE WHEN b.status='no_show' THEN 1 ELSE 0 END) AS no_shows
-    FROM users u
-    LEFT JOIN bookings b ON b.user_id = u.id
-    GROUP BY u.id
-""").fetchall()
+conn = get_conn()
+users = conn.execute(
+    """
+    SELECT id, name, email
+    FROM users
+    ORDER BY email
+    """
+).fetchall()
+conn.close()
+
+bookings = list_all_bookings()
+attendance_map = {user[0]: {"name": user[1], "email": user[2], "attended": 0, "no_shows": 0} for user in users}
+for booking in bookings:
+    record = attendance_map.get(booking.user_id)
+    if not record:
+        continue
+    if booking.checked_in:
+        record["attended"] += 1
+    if booking.status == "no_show":
+        record["no_shows"] += 1
 
 df_att = pd.DataFrame(
-    attendance,
-    columns=["User", "Email", "Attended", "No Shows"],
+    [
+        {
+            "User": record["name"],
+            "Email": record["email"],
+            "Attended": record["attended"],
+            "No Shows": record["no_shows"],
+        }
+        for record in attendance_map.values()
+    ]
 )
 st.dataframe(df_att)
-
-conn.close()
