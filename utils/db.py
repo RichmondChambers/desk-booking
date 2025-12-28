@@ -3,9 +3,6 @@ import os
 import sqlite3
 from pathlib import Path
 
-import streamlit as st
-
-
 # ===================================================
 # RESOLVE A GUARANTEED-PERSISTENT DATA DIRECTORY
 # ===================================================
@@ -64,8 +61,6 @@ db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
 if db_path_env:
     DB_PATH = Path(db_path_env).expanduser()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-else:
-    DB_PATH = DATA_DIR / "desk-booking.db"
 
 if not DB_PATH.parent.exists():
     raise RuntimeError(
