@@ -9,8 +9,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DB_PATH = BASE_DIR / "data" / "data.db"
 PERSISTENT_DATA_DIR = Path("/data")
 
-os.environ.setdefault("DESK_BOOKING_DB_PATH", str(DEFAULT_DB_PATH))
-
 
 # ---------------------------------------------------
 # DATABASE PATH RESOLUTION
