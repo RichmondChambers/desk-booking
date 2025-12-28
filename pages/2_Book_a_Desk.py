@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date, time, timedelta
@@ -69,6 +70,20 @@ def availability_ranges(available_slots: list[time], selected_date: date):
     return ranges
 
 
+def user_initials(name: str | None, email: str | None) -> str:
+    raw = (name or "").strip()
+    if not raw:
+        raw = (email or "").split("@")[0]
+    parts = [part for part in re.split(r"[\s._-]+", raw) if part]
+    if not parts:
+        return ""
+    if len(parts) >= 2:
+        initials = f"{parts[0][0]}{parts[1][0]}"
+    else:
+        initials = parts[0][:2]
+    return initials.upper()
+
+
 # --------------------------------------------------
 # PAGE SETUP
 # --------------------------------------------------
@@ -129,12 +144,14 @@ slots = generate_slots(selected_date)
 # LOAD EXISTING BOOKINGS
 # --------------------------------------------------
 booked = {desk_id: set() for desk_id in DESK_IDS}
+booked_initials = {desk_id: {} for desk_id in DESK_IDS}
 
 with get_conn() as conn:
     rows = conn.execute(
         """
-        SELECT desk_id, start_time, end_time
-        FROM bookings
+        SELECT b.desk_id, b.start_time, b.end_time, u.name, u.email
+        FROM bookings b
+        JOIN users u ON u.id = b.user_id
         WHERE date = ?
           AND status = 'booked'
         """,
@@ -144,9 +161,12 @@ with get_conn() as conn:
 for row in rows:
     s = time.fromisoformat(row["start_time"])
     e = time.fromisoformat(row["end_time"])
+    initials = user_initials(row["name"], row["email"])
     for t in slots:
         if s <= t < e:
             booked[row["desk_id"]].add(t)
+            if initials:
+                booked_initials[row["desk_id"]][t] = initials
 
 # --------------------------------------------------
 # AVAILABILITY GRID
@@ -160,7 +180,7 @@ with legend_col:
         """
         <div style="display:flex; gap:16px; align-items:center; margin:8px 0;">
             <div><span style="display:inline-block;width:14px;height:14px;background:#009fdf;border-radius:3px;"></span> Available</div>
-            <div><span style="display:inline-block;width:14px;height:14px;background:#e0e0e0;border-radius:3px;"></span> Booked</div>
+            <div><span style="display:inline-block;width:14px;height:14px;background:#e0e0e0;border-radius:3px;"></span> Booked (initials)</div>
             <div><span style="display:inline-block;width:14px;height:14px;background:#f2f2f2;border-radius:3px;"></span> Past</div>
         </div>
         """,
@@ -182,7 +202,10 @@ for t in filtered_slots:
         if is_past_slot(selected_date, t, now):
             row[DESK_NAMES[desk_id]] = "Past"
         elif t in booked[desk_id]:
-            row[DESK_NAMES[desk_id]] = "Booked"
+            initials = booked_initials[desk_id].get(t)
+            row[DESK_NAMES[desk_id]] = (
+                f"Booked:{initials}" if initials else "Booked"
+            )
         else:
             row[DESK_NAMES[desk_id]] = "Available"
     grid_rows.append(row)
@@ -214,7 +237,9 @@ cell_style = JsCode(
             return {backgroundColor:"#005f9e", color:"white", fontWeight:"700"};
         }
         if (params.value === "Available") return {backgroundColor:"#009fdf", color:"white"};
-        if (params.value === "Booked") return {backgroundColor:"#e0e0e0", color:"#666"};
+        if (String(params.value).startsWith("Booked")) {
+            return {backgroundColor:"#e0e0e0", color:"#666", fontWeight:"700"};
+        }
         if (params.value === "Past") return {backgroundColor:"#f2f2f2", color:"#999"};
         return {};
     }
@@ -225,6 +250,9 @@ value_formatter = JsCode(
     """
     function(params) {
         if (params.value === "Available") return "";
+        if (String(params.value).startsWith("Booked:")) {
+            return String(params.value).split(":")[1];
+        }
         if (params.value === "Booked") return "×";
         if (params.value === "Past") return "–";
         return params.value;
