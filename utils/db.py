@@ -15,18 +15,19 @@ def _resolve_data_dir() -> tuple[Path, bool]:
     Priority:
     1. Explicit DESK_BOOKING_DATA_DIR (recommended for production)
     2. Streamlit Cloud persistent volume (/data) IF writable
-    3. User home directory (~/.desk-booking)
-    4. Project-local ./data directory (fallback)
+    3. Project-local ./data directory (only if explicitly allowed)
+    Otherwise: crash (no silent data loss)
     """
 
     env_dir = os.getenv("DESK_BOOKING_DATA_DIR")
+    allow_ephemeral = os.getenv("DESK_BOOKING_ALLOW_EPHEMERAL") == "1"
 
-    candidates: list[tuple[Path, bool]] = []
+    candidates = []
     if env_dir:
-        candidates.append((Path(env_dir).expanduser(), True))
-    candidates.append((Path("/data"), True))
-    candidates.append((Path.home() / ".desk-booking", False))
-    candidates.append((Path(__file__).resolve().parent.parent / "data", False))
+        candidates.append(Path(env_dir).expanduser())
+    candidates.append(Path("/data"))
+    if allow_ephemeral:
+        candidates.append(Path(__file__).resolve().parent.parent / "data")
 
     for path, is_persistent in candidates:
         try:
@@ -38,13 +39,19 @@ def _resolve_data_dir() -> tuple[Path, bool]:
         except Exception:
             continue
 
+    if not allow_ephemeral:
+        raise RuntimeError(
+            "No writable persistent data directory available. "
+            "Set DESK_BOOKING_DATA_DIR or mount /data to prevent booking loss."
+        )
+
     raise RuntimeError(
         "No writable data directory available. "
         "Bookings cannot be safely stored."
     )
 
 
-DATA_DIR, DATA_DIR_IS_PERSISTENT = _resolve_data_dir()
+DATA_DIR = _resolve_data_dir()
 db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
 if db_path_env:
     DB_PATH = Path(db_path_env).expanduser()
