@@ -13,15 +13,21 @@ import streamlit as st
 def _resolve_data_dir() -> Path:
     """
     Priority:
-    1. Streamlit Cloud persistent volume (/data) IF writable
-    2. Project-local ./data directory
+    1. Explicit DESK_BOOKING_DATA_DIR (recommended for production)
+    2. Streamlit Cloud persistent volume (/data) IF writable
+    3. Project-local ./data directory (only if explicitly allowed)
     Otherwise: crash (no silent data loss)
     """
 
-    candidates = [
-        Path("/data"),
-        Path(__file__).resolve().parent.parent / "data",
-    ]
+    env_dir = os.getenv("DESK_BOOKING_DATA_DIR")
+    allow_ephemeral = os.getenv("DESK_BOOKING_ALLOW_EPHEMERAL") == "1"
+
+    candidates = []
+    if env_dir:
+        candidates.append(Path(env_dir).expanduser())
+    candidates.append(Path("/data"))
+    if allow_ephemeral:
+        candidates.append(Path(__file__).resolve().parent.parent / "data")
 
     for path in candidates:
         try:
@@ -33,14 +39,25 @@ def _resolve_data_dir() -> Path:
         except Exception:
             continue
 
+    if not allow_ephemeral:
+        raise RuntimeError(
+            "No writable persistent data directory available. "
+            "Set DESK_BOOKING_DATA_DIR or mount /data to prevent booking loss."
+        )
+
     raise RuntimeError(
-        "No writable persistent data directory available. "
+        "No writable data directory available. "
         "Bookings cannot be safely stored."
     )
 
 
 DATA_DIR = _resolve_data_dir()
-DB_PATH = DATA_DIR / "desk-booking.db"
+db_path_env = os.getenv("DESK_BOOKING_DB_PATH")
+if db_path_env:
+    DB_PATH = Path(db_path_env).expanduser()
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+else:
+    DB_PATH = DATA_DIR / "desk-booking.db"
 DESK_BACKUP_PATH = DATA_DIR / "desks.json"
 
 
