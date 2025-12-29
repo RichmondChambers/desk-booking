@@ -149,6 +149,10 @@ with st.sidebar:
     # ---------------------------------------------------
     # SIDEBAR
     # ---------------------------------------------------
+    st.image("assets/logo.svg", use_container_width=True)
+
+    st.divider()
+
     st.markdown(f"**User:** {st.session_state.user_name}")
     st.markdown(f"**Email:** {st.session_state.user_email}")
     st.markdown(f"**Role:** {st.session_state.role}")

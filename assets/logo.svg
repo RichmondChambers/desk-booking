@@ -1,11 +1,13 @@
-<svg width="400" height="240" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">Richmond Chambers logo</title>
-  <desc id="desc">Monochrome Richmond Chambers wordmark with Immigration Barristers strapline.</desc>
-  <rect width="400" height="240" fill="#ffffff"/>
-  <text x="200" y="110" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="40" fill="#111" letter-spacing="0.5">
-    Richmond Chambers
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Richmond Chambers brand logo</title>
+  <desc id="desc">Richmond Chambers logo with cyan outlined square and tagline immigration barristers on a charcoal background.</desc>
+  <rect width="1200" height="1200" fill="#1c232d" />
+  <rect x="260" y="230" width="360" height="360" fill="none" stroke="#00b0ed" stroke-width="24" />
+  <text x="640" y="360" fill="#ffffff" font-family="'Montserrat', 'Helvetica Neue', Arial, sans-serif" font-size="96" font-weight="600" letter-spacing="4">
+    <tspan x="640" dy="0">RICHMOND</tspan>
+    <tspan x="640" dy="110">CHAMBERS.</tspan>
   </text>
-  <text x="200" y="155" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="24" fill="#111" letter-spacing="0.4">
-    Immigration Barristers
+  <text x="260" y="720" fill="#00b0ed" font-family="'Montserrat', 'Helvetica Neue', Arial, sans-serif" font-size="64" letter-spacing="2">
+    immigration barristers
   </text>
 </svg>
