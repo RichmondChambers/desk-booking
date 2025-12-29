@@ -67,10 +67,13 @@ def _next_user_id(transaction: firestore.Transaction) -> int:
         .collection(COUNTERS_COLLECTION)
         .document(COUNTERS_DOC)
     )
-    snapshot = transaction.get(counters_ref)
+
+    snapshot = counters_ref.get(transaction=transaction)
+
     current = 0
     if snapshot.exists:
         current = int(snapshot.to_dict().get("user_id", 0))
+
     next_id = current + 1
     transaction.set(counters_ref, {"user_id": next_id}, merge=True)
     return next_id
@@ -89,10 +92,13 @@ def create_user(
 
     @firestore.transactional
     def _create(transaction: firestore.Transaction) -> UserRecord:
-        snapshot = transaction.get(user_ref)
+        snapshot = user_ref.get(transaction=transaction)
+
         if snapshot.exists:
             return _doc_to_record(snapshot)
+
         user_id = _next_user_id(transaction)
+
         payload = {
             "user_id": user_id,
             "name": name,
@@ -103,7 +109,9 @@ def create_user(
             "created_at": firestore.SERVER_TIMESTAMP,
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
+
         transaction.set(user_ref, payload)
+
         return UserRecord(
             user_id=user_id,
             name=name,
@@ -139,13 +147,17 @@ def migrate_sqlite_users(rows: Iterable[dict]) -> dict[str, int]:
         if not email:
             skipped += 1
             continue
+
         email_normalized = _normalize_email(email)
         ref = _collection().document(email_normalized)
+
         if ref.get().exists:
             skipped += 1
             continue
+
         user_id = int(row_data.get("id") or 0)
         max_user_id = max(max_user_id, user_id)
+
         batch.set(
             ref,
             {
@@ -164,11 +176,15 @@ def migrate_sqlite_users(rows: Iterable[dict]) -> dict[str, int]:
 
     if inserted:
         batch.commit()
+
         counters_ref = client.collection(COUNTERS_COLLECTION).document(COUNTERS_DOC)
         snapshot = counters_ref.get()
+
         current = 0
         if snapshot.exists:
             current = int(snapshot.to_dict().get("user_id", 0))
+
         if max_user_id > current:
             counters_ref.set({"user_id": max_user_id}, merge=True)
+
     return {"inserted": inserted, "skipped": skipped}
