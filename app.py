@@ -7,6 +7,29 @@ from utils.db import ensure_db
 from utils.firestore_users import create_user, get_user_by_email, update_user
 from utils.styles import apply_lato_font
 
+LOGO_SVG = """
+<svg width="400" height="240" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Richmond Chambers logo</title>
+  <desc id="desc">Monochrome Richmond Chambers wordmark with Immigration Barristers strapline.</desc>
+  <rect width="400" height="240" fill="#ffffff"/>
+  <text x="200" y="110" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="40" fill="#111" letter-spacing="0.5">
+    Richmond Chambers
+  </text>
+  <text x="200" y="155" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="24" fill="#111" letter-spacing="0.4">
+    Immigration Barristers
+  </text>
+</svg>
+"""
+
+
+def render_branding():
+    encoded_logo = base64.b64encode(LOGO_SVG.encode("utf-8")).decode("utf-8")
+    data_uri = f"data:image/svg+xml;base64,{encoded_logo}"
+    st.sidebar.markdown(
+        f"<div style='padding: 0 0 1rem 0;'><img src='{data_uri}' alt='Richmond Chambers logo' style='width: 100%; height: auto;' /></div>",
+        unsafe_allow_html=True,
+    )
+
 # ---------------------------------------------------
 # STREAMLIT CONFIG
 # ---------------------------------------------------
