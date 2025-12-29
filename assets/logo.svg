@@ -1,0 +1,13 @@
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Richmond Chambers brand logo</title>
+  <desc id="desc">Richmond Chambers logo with cyan outlined square and tagline immigration barristers on a charcoal background.</desc>
+  <rect width="1200" height="1200" fill="#1c232d" />
+  <rect x="260" y="230" width="360" height="360" fill="none" stroke="#00b0ed" stroke-width="24" />
+  <text x="640" y="360" fill="#ffffff" font-family="'Montserrat', 'Helvetica Neue', Arial, sans-serif" font-size="96" font-weight="600" letter-spacing="4">
+    <tspan x="640" dy="0">RICHMOND</tspan>
+    <tspan x="640" dy="110">CHAMBERS.</tspan>
+  </text>
+  <text x="260" y="720" fill="#00b0ed" font-family="'Montserrat', 'Helvetica Neue', Arial, sans-serif" font-size="64" letter-spacing="2">
+    immigration barristers
+  </text>
+</svg>
