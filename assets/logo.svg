@@ -1,0 +1,11 @@
+<svg width="400" height="240" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Richmond Chambers logo</title>
+  <desc id="desc">Monochrome Richmond Chambers wordmark with Immigration Barristers strapline.</desc>
+  <rect width="400" height="240" fill="#ffffff"/>
+  <text x="200" y="110" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="40" fill="#111" letter-spacing="0.5">
+    Richmond Chambers
+  </text>
+  <text x="200" y="155" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="24" fill="#111" letter-spacing="0.4">
+    Immigration Barristers
+  </text>
+</svg>

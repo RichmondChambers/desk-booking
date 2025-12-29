@@ -1,5 +1,5 @@
-import streamlit as st
 import requests
+import streamlit as st
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
@@ -12,6 +12,17 @@ from utils.styles import apply_lato_font
 # ---------------------------------------------------
 st.set_page_config(page_title="Desk Booking", layout="wide")
 apply_lato_font()
+st.logo("assets/logo.svg")
+st.markdown(
+    """
+    <style>
+    section[data-testid="stSidebar"] div[data-testid="stLogo"]:not(:first-of-type) {
+        display: none;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------
 # BOOTSTRAP ADMINS (CANNOT BE LOST)
@@ -144,17 +155,18 @@ if st.session_state.user_id is None:
     st.session_state.role = final_role
     st.session_state.can_book = user.can_book
 
-# ---------------------------------------------------
-# SIDEBAR
-# ---------------------------------------------------
-st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
-st.sidebar.markdown(f"**Email:** {st.session_state.user_email}")
-st.sidebar.markdown(f"**Role:** {st.session_state.role}")
+with st.sidebar:
+    # ---------------------------------------------------
+    # SIDEBAR
+    # ---------------------------------------------------
+    st.markdown(f"**User:** {st.session_state.user_name}")
+    st.markdown(f"**Email:** {st.session_state.user_email}")
+    st.markdown(f"**Role:** {st.session_state.role}")
 
-st.sidebar.divider()
+    st.divider()
 
-if st.sidebar.button("Log out"):
-    logout()
+    if st.button("Log out"):
+        logout()
 
 # ---------------------------------------------------
 # MAIN APP
