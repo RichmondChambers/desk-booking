@@ -67,7 +67,7 @@ def _next_user_id(transaction: firestore.Transaction) -> int:
         .collection(COUNTERS_COLLECTION)
         .document(COUNTERS_DOC)
     )
-    snapshot = _snapshot_from_transaction(transaction, counters_ref)
+    snapshot = transaction.get(counters_ref)
     current = 0
     if snapshot.exists:
         current = int(snapshot.to_dict().get("user_id", 0))
@@ -89,7 +89,7 @@ def create_user(
 
     @firestore.transactional
     def _create(transaction: firestore.Transaction) -> UserRecord:
-        snapshot = _snapshot_from_transaction(transaction, user_ref)
+        snapshot = transaction.get(user_ref)
         if snapshot.exists:
             return _doc_to_record(snapshot)
         user_id = _next_user_id(transaction)
@@ -124,16 +124,6 @@ def update_user(email: str, updates: dict[str, Any]) -> None:
     payload.pop("email", None)
     payload["updated_at"] = firestore.SERVER_TIMESTAMP
     _collection().document(email_normalized).set(payload, merge=True)
-
-
-def _snapshot_from_transaction(
-    transaction: firestore.Transaction,
-    reference: firestore.DocumentReference,
-) -> firestore.DocumentSnapshot:
-    snapshot = transaction.get(reference)
-    if hasattr(snapshot, "exists"):
-        return snapshot
-    return next(iter(snapshot))
 
 
 def migrate_sqlite_users(rows: Iterable[dict]) -> dict[str, int]:
