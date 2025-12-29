@@ -13,16 +13,6 @@ from utils.styles import apply_lato_font
 st.set_page_config(page_title="Desk Booking", layout="wide")
 apply_lato_font()
 st.logo("assets/logo.svg")
-st.markdown(
-    """
-    <style>
-    section[data-testid="stSidebar"] div[data-testid="stLogo"]:not(:first-of-type) {
-        display: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 
 # ---------------------------------------------------
 # BOOTSTRAP ADMINS (CANNOT BE LOST)
@@ -159,6 +149,10 @@ with st.sidebar:
     # ---------------------------------------------------
     # SIDEBAR
     # ---------------------------------------------------
+    st.image("assets/logo.svg", use_container_width=True)
+
+    st.divider()
+
     st.markdown(f"**User:** {st.session_state.user_name}")
     st.markdown(f"**Email:** {st.session_state.user_email}")
     st.markdown(f"**Role:** {st.session_state.role}")
