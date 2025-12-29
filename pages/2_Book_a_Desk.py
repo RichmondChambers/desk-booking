@@ -361,6 +361,9 @@ available = [
     and not is_past_slot(selected_date, t, now)
 ]
 
+start_value = "Select start"
+end_value = "Select end"
+
 if not available:
     with start_col:
         st.selectbox("Start time", ["No available slots"], disabled=True)
