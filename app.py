@@ -1,4 +1,3 @@
-import base64
 import requests
 import streamlit as st
 from google_auth_oauthlib.flow import Flow
@@ -36,7 +35,7 @@ def render_branding():
 # ---------------------------------------------------
 st.set_page_config(page_title="Desk Booking", layout="wide")
 apply_lato_font()
-render_branding()
+st.logo("assets/logo.svg")
 
 # ---------------------------------------------------
 # BOOTSTRAP ADMINS (CANNOT BE LOST)
@@ -173,6 +172,10 @@ with st.sidebar:
     # ---------------------------------------------------
     # SIDEBAR
     # ---------------------------------------------------
+    st.image("assets/logo.svg", use_container_width=True)
+
+    st.divider()
+
     st.markdown(f"**User:** {st.session_state.user_name}")
     st.markdown(f"**Email:** {st.session_state.user_email}")
     st.markdown(f"**Role:** {st.session_state.role}")
