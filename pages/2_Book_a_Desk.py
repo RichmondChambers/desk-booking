@@ -163,7 +163,7 @@ for booking in bookings:
 # AVAILABILITY GRID
 # --------------------------------------------------
 st.markdown(
-    """
+    f"""
     <style>
     .ag-header-cell-label {
         justify-content: center;
@@ -181,7 +181,7 @@ st.markdown(
         width: 100%;
     }
     </style>
-    <h2 style="text-align:center;">Availability overview</h2>
+    <h2 style="text-align:center;">Desk Availability {selected_date.strftime("%d/%m/%Y")}</h2>
     """,
     unsafe_allow_html=True,
 )
