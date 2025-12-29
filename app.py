@@ -1,5 +1,5 @@
-import streamlit as st
 import requests
+import streamlit as st
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
@@ -144,17 +144,22 @@ if st.session_state.user_id is None:
     st.session_state.role = final_role
     st.session_state.can_book = user.can_book
 
-# ---------------------------------------------------
-# SIDEBAR
-# ---------------------------------------------------
-st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
-st.sidebar.markdown(f"**Email:** {st.session_state.user_email}")
-st.sidebar.markdown(f"**Role:** {st.session_state.role}")
+with st.sidebar:
+    # ---------------------------------------------------
+    # SIDEBAR
+    # ---------------------------------------------------
+    st.image("assets/logo.svg", use_container_width=True)
 
-st.sidebar.divider()
+    st.divider()
 
-if st.sidebar.button("Log out"):
-    logout()
+    st.markdown(f"**User:** {st.session_state.user_name}")
+    st.markdown(f"**Email:** {st.session_state.user_email}")
+    st.markdown(f"**Role:** {st.session_state.role}")
+
+    st.divider()
+
+    if st.button("Log out"):
+        logout()
 
 # ---------------------------------------------------
 # MAIN APP
