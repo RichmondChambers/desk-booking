@@ -1,5 +1,6 @@
-import streamlit as st
+import base64
 import requests
+import streamlit as st
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
@@ -7,11 +8,35 @@ from utils.db import ensure_db
 from utils.firestore_users import create_user, get_user_by_email, update_user
 from utils.styles import apply_lato_font
 
+LOGO_SVG = """
+<svg width="400" height="240" viewBox="0 0 400 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Richmond Chambers logo</title>
+  <desc id="desc">Monochrome Richmond Chambers wordmark with Immigration Barristers strapline.</desc>
+  <rect width="400" height="240" fill="#ffffff"/>
+  <text x="200" y="110" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="40" fill="#111" letter-spacing="0.5">
+    Richmond Chambers
+  </text>
+  <text x="200" y="155" text-anchor="middle" font-family="'Times New Roman', 'Georgia', serif" font-size="24" fill="#111" letter-spacing="0.4">
+    Immigration Barristers
+  </text>
+</svg>
+"""
+
+
+def render_branding():
+    encoded_logo = base64.b64encode(LOGO_SVG.encode("utf-8")).decode("utf-8")
+    data_uri = f"data:image/svg+xml;base64,{encoded_logo}"
+    st.sidebar.markdown(
+        f"<div style='padding: 0 0 1rem 0;'><img src='{data_uri}' alt='Richmond Chambers logo' style='width: 100%; height: auto;' /></div>",
+        unsafe_allow_html=True,
+    )
+
 # ---------------------------------------------------
 # STREAMLIT CONFIG
 # ---------------------------------------------------
 st.set_page_config(page_title="Desk Booking", layout="wide")
 apply_lato_font()
+render_branding()
 
 # ---------------------------------------------------
 # BOOTSTRAP ADMINS (CANNOT BE LOST)
@@ -144,17 +169,18 @@ if st.session_state.user_id is None:
     st.session_state.role = final_role
     st.session_state.can_book = user.can_book
 
-# ---------------------------------------------------
-# SIDEBAR
-# ---------------------------------------------------
-st.sidebar.markdown(f"**User:** {st.session_state.user_name}")
-st.sidebar.markdown(f"**Email:** {st.session_state.user_email}")
-st.sidebar.markdown(f"**Role:** {st.session_state.role}")
+with st.sidebar:
+    # ---------------------------------------------------
+    # SIDEBAR
+    # ---------------------------------------------------
+    st.markdown(f"**User:** {st.session_state.user_name}")
+    st.markdown(f"**Email:** {st.session_state.user_email}")
+    st.markdown(f"**Role:** {st.session_state.role}")
 
-st.sidebar.divider()
+    st.divider()
 
-if st.sidebar.button("Log out"):
-    logout()
+    if st.button("Log out"):
+        logout()
 
 # ---------------------------------------------------
 # MAIN APP
