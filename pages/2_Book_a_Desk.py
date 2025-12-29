@@ -195,7 +195,7 @@ st.markdown(
     <div style="display:flex; gap:16px; align-items:center; justify-content:center; margin:8px 0; text-align:center;">
         <div><span style="display:inline-block;width:14px;height:14px;background:#ffffff;border-radius:3px;border:1px solid #d0d0d0;"></span> Available</div>
         <div><span style="display:inline-block;width:14px;height:14px;background:#009fdf;border-radius:3px;"></span> Booked (initials)</div>
-        <div><span style="display:inline-block;width:14px;height:14px;background:#f2f2f2;border-radius:3px;"></span> Past</div>
+        <div><span style="display:inline-block;width:14px;height:14px;background:#d9d9d9;border-radius:3px;"></span> Past</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -241,7 +241,7 @@ cell_style = JsCode(
         if (String(params.value).startsWith("Booked")) {
             return {backgroundColor:"#009fdf", color:"#ffffff", fontWeight:"700", textAlign:"center"};
         }
-        if (params.value === "Past") return {backgroundColor:"#f2f2f2", color:"#999", textAlign:"center"};
+        if (params.value === "Past") return {backgroundColor:"#d9d9d9", color:"#666", textAlign:"center"};
         return {textAlign:"center"};
     }
     """
