@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 from utils.auth import require_admin
-from utils.db import ensure_db, get_conn
+from utils.db import ensure_db
 from utils.firestore_client import list_all_bookings
+from utils.firestore_users import list_users
 from utils.styles import apply_lato_font
 
 apply_lato_font()
@@ -33,18 +34,18 @@ else:
 
 # Attendance summary
 st.subheader("Attendance Summary")
-conn = get_conn()
-users = conn.execute(
-    """
-    SELECT id, name, email
-    FROM users
-    ORDER BY email
-    """
-).fetchall()
-conn.close()
+users = list_users()
 
 bookings = list_all_bookings()
-attendance_map = {user[0]: {"name": user[1], "email": user[2], "attended": 0, "no_shows": 0} for user in users}
+attendance_map = {
+    user.user_id: {
+        "name": user.name,
+        "email": user.email,
+        "attended": 0,
+        "no_shows": 0,
+    }
+    for user in users
+}
 for booking in bookings:
     record = attendance_map.get(booking.user_id)
     if not record:

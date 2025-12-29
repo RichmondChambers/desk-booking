@@ -3,7 +3,8 @@ import requests
 from google_auth_oauthlib.flow import Flow
 
 from utils.auth import require_login
-from utils.db import ensure_db, get_conn
+from utils.db import ensure_db
+from utils.firestore_users import create_user, get_user_by_email, update_user
 from utils.styles import apply_lato_font
 
 # ---------------------------------------------------
@@ -111,71 +112,37 @@ if st.session_state.user_id is None:
     email = st.session_state["oauth_email"]
     name = st.session_state["oauth_name"]
 
-    conn = get_conn()
-    c = conn.cursor()
-
-    row = c.execute(
-        """
-        SELECT id, name, role, can_book, is_active
-        FROM users
-        WHERE email = ?
-        """,
-        (email,),
-    ).fetchone()
+    user = get_user_by_email(email)
 
     # FIRST LOGIN → CREATE USER
-    if not row:
+    if not user:
         initial_role = "admin" if email in BOOTSTRAP_ADMINS else "user"
-
-        c.execute(
-            """
-            INSERT INTO users (name, email, role, can_book, is_active)
-            VALUES (?, ?, ?, 1, 1)
-            """,
-            (name, email, initial_role),
-        )
-        conn.commit()
-
-        row = c.execute(
-            """
-            SELECT id, name, role, can_book, is_active
-            FROM users
-            WHERE email = ?
-            """,
-            (email,),
-        ).fetchone()
+        user = create_user(name=name, email=email, role=initial_role)
 
     # BLOCK DEACTIVATED USERS
-    if row[4] == 0:
-        conn.close()
+    if not user.is_active:
         st.error(
             "Your account has been deactivated. "
             "Please contact an administrator."
         )
         st.stop()
 
-    db_role = row[2]
+    db_role = user.role
 
     # 🔒 BOOTSTRAP OVERRIDE ALWAYS WINS
     if email in BOOTSTRAP_ADMINS:
         final_role = "admin"
 
         if db_role != "admin":
-            c.execute(
-                "UPDATE users SET role='admin' WHERE email=?",
-                (email,),
-            )
-            conn.commit()
+            update_user(email, {"role": "admin"})
     else:
         final_role = db_role
 
-    conn.close()
-
-    st.session_state.user_id = row[0]
-    st.session_state.user_name = row[1]
+    st.session_state.user_id = user.user_id
+    st.session_state.user_name = user.name
     st.session_state.user_email = email
     st.session_state.role = final_role
-    st.session_state.can_book = row[3]
+    st.session_state.can_book = user.can_book
 
 # ---------------------------------------------------
 # SIDEBAR
