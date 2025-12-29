@@ -12,6 +12,7 @@ from utils.styles import apply_lato_font
 # ---------------------------------------------------
 st.set_page_config(page_title="Desk Booking", layout="wide")
 apply_lato_font()
+st.logo("assets/logo.svg")
 
 # ---------------------------------------------------
 # BOOTSTRAP ADMINS (CANNOT BE LOST)
