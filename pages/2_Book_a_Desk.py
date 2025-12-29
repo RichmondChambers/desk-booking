@@ -163,7 +163,7 @@ for booking in bookings:
 # AVAILABILITY GRID
 # --------------------------------------------------
 st.markdown(
-    f"""
+    """
     <style>
     .ag-header-cell-label {
         justify-content: center;
@@ -181,8 +181,12 @@ st.markdown(
         width: 100%;
     }
     </style>
-    <h2 style="text-align:center;">Desk Availability {selected_date.strftime("%d/%m/%Y")}</h2>
     """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    f'<h2 style="text-align:center;">Desk Availability {selected_date.strftime("%d/%m/%Y")}</h2>',
     unsafe_allow_html=True,
 )
 
@@ -223,7 +227,7 @@ if "grid_selected_cells" not in st.session_state:
     st.session_state.grid_selected_cells = {}
 
 # --------------------------------------------------
-# GRID STYLING (WITH SELECTION HIGHLIGHT)
+# GRID STYLING
 # --------------------------------------------------
 cell_style = JsCode(
     """
@@ -336,7 +340,7 @@ if grid_return and grid_return.get("colId") not in (None, "Time"):
         }
 
 # --------------------------------------------------
-# RANGE SELECTION UI (UNCHANGED)
+# RANGE SELECTION UI
 # --------------------------------------------------
 st.subheader("Select time range per desk")
 st.caption("Pick a start time first, then choose an end time from the contiguous availability.")
@@ -359,28 +363,14 @@ available = [
 
 if not available:
     with start_col:
-        st.selectbox(
-            "Start time",
-            ["No available slots"],
-            disabled=True,
-            key=f"start_{desk_id}_{date_iso}",
-        )
+        st.selectbox("Start time", ["No available slots"], disabled=True)
     with end_col:
-        st.selectbox(
-            "End time",
-            ["No available slots"],
-            disabled=True,
-            key=f"end_{desk_id}_{date_iso}",
-        )
+        st.selectbox("End time", ["No available slots"], disabled=True)
     st.info("No available slots.")
 else:
     labels = [time_label(t) for t in available]
     with start_col:
-        start_value = st.selectbox(
-            "Start time",
-            ["Select start"] + labels,
-            key=f"start_{desk_id}_{date_iso}",
-        )
+        start_value = st.selectbox("Start time", ["Select start"] + labels)
 
     if start_value != "Select start":
         start_time = datetime.strptime(start_value, "%H:%M").time()
@@ -399,7 +389,6 @@ else:
         end_value = st.selectbox(
             "End time",
             ["Select end"] + end_options,
-            key=f"end_{desk_id}_{date_iso}",
             disabled=not end_options,
         )
 
@@ -416,40 +405,38 @@ with message_col:
         st.success("Desk booked")
 
 if confirm_clicked:
-    if not can_confirm:
-        st.error("Please select a start and end time.")
-    else:
-        start_time = datetime.strptime(start_value, "%H:%M").time()
-        end_time = datetime.strptime(end_value, "%H:%M").time()
-        if start_time >= end_time:
-            st.error("End time must be after start time.")
-        else:
-            range_slots = []
-            current = datetime.combine(selected_date, start_time)
-            end_dt = datetime.combine(selected_date, end_time)
-            while current < end_dt:
-                range_slots.append(current.time())
-                current += timedelta(minutes=STEP)
+    start_time = datetime.strptime(start_value, "%H:%M").time()
+    end_time = datetime.strptime(end_value, "%H:%M").time()
 
-            if any(slot not in available for slot in range_slots):
+    if start_time >= end_time:
+        st.error("End time must be after start time.")
+    else:
+        range_slots = []
+        current = datetime.combine(selected_date, start_time)
+        end_dt = datetime.combine(selected_date, end_time)
+        while current < end_dt:
+            range_slots.append(current.time())
+            current += timedelta(minutes=STEP)
+
+        if any(slot not in available for slot in range_slots):
+            st.error("Selected time range is no longer available.")
+        else:
+            try:
+                create_booking(
+                    user_id=user_id,
+                    user_email=st.session_state.user_email,
+                    user_name=st.session_state.user_name,
+                    desk_id=desk_id,
+                    booking_date=date_iso,
+                    start_time=start_value,
+                    end_time=end_value,
+                )
+            except BookingConflict:
                 st.error("Selected time range is no longer available.")
             else:
-                try:
-                    create_booking(
-                        user_id=user_id,
-                        user_email=st.session_state.user_email,
-                        user_name=st.session_state.user_name,
-                        desk_id=desk_id,
-                        booking_date=date_iso,
-                        start_time=start_value,
-                        end_time=end_value,
-                    )
-                except BookingConflict:
-                    st.error("Selected time range is no longer available.")
-                else:
-                    log_action(
-                        "BOOKING_CREATED",
-                        f"desk_id={desk_id}, date={date_iso}, start={start_value}, end={end_value}",
-                    )
-                    st.session_state.booking_success = True
-                    st.rerun()
+                log_action(
+                    "BOOKING_CREATED",
+                    f"desk_id={desk_id}, date={date_iso}, start={start_value}, end={end_value}",
+                )
+                st.session_state.booking_success = True
+                st.rerun()
